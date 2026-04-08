@@ -16,11 +16,16 @@ from .graders import (
     grade_resolve_step1,
     grade_resolve_step2,
     grade_resolve_step3,
-    grade_crisis_ticket,
-    compute_confidence_bonus,
-    compute_time_penalty,
-    get_score_breakdown,
 )
+
+_EPS = 0.001  # For strict (0, 1) clamping
+
+
+def _strict_clamp(score: float) -> float:
+    """Clamp score to strictly open interval (0, 1)."""
+    return round(max(_EPS, min(1.0 - _EPS, score)), 4)
+
+
 from .tickets import TICKETS
 from .metrics import BusinessMetrics
 
@@ -194,63 +199,22 @@ class NexDeskEnv:
                     sess["accumulated"][k] = v
         merged = sess["accumulated"]
 
-        # Compute base reward
+        # Compute base reward (already clamped by graders)
         try:
-            base_reward = self._compute_reward(task, step, merged, ticket)
+            reward = self._compute_reward(task, step, merged, ticket)
         except Exception as e:
             logger.error(f"Reward computation error: {e}")
-            base_reward = 0.0
+            reward = _EPS
 
-        # Time penalty
-        elapsed_minutes = (time.time() - sess["start_time"]) / 60.0
-        try:
-            time_penalty = compute_time_penalty(
-                elapsed_minutes, sess["sla_deadline_minutes"], sess["stress_level"]
-            )
-        except Exception:
-            time_penalty = 0.0
-
-        # Confidence calibration
-        confidence = action.get("confidence") if action else None
-        confidence_bonus = 0.0
-        if confidence is not None and isinstance(confidence, (int, float)):
-            try:
-                max_reward_for_step = cfg.get("max_reward_per_step", {}).get(step, 1.0)
-                normalized_accuracy = (
-                    base_reward / max_reward_for_step if max_reward_for_step > 0 else 0.0
-                )
-                confidence_bonus = compute_confidence_bonus(confidence, normalized_accuracy)
-                sess["confidence_history"].append(float(confidence))
-                sess["accuracy_history"].append(normalized_accuracy)
-            except Exception:
-                confidence_bonus = 0.0
-
-        # Final reward with penalties
-        reward = base_reward * (1.0 - time_penalty) + confidence_bonus
-        sla_penalty = 0.0
-        if elapsed_minutes > sess["sla_deadline_minutes"]:
-            sess["sla_breaches"] += 1
-            sla_penalty = 0.05 * sess["sla_breaches"]
-            reward = reward * (1.0 - min(sla_penalty, 0.3))
-
-        reward = max(0.0, min(reward, 1.0))
+        # Final clamp to strictly (0, 1)
+        reward = _strict_clamp(reward)
         sess["total_reward"] += reward
         sess["rewards"].append(reward)
 
-        # Score breakdown
-        try:
-            score_breakdown = get_score_breakdown(task, step, merged, ticket)
-        except Exception:
-            score_breakdown = {}
-        score_breakdown.update(
-            {
-                "time_penalty": round(time_penalty, 4),
-                "confidence_bonus": round(confidence_bonus, 4),
-                "base_reward": round(base_reward, 4),
-                "sla_penalty": round(sla_penalty, 4),
-                "sla_breaches": sess["sla_breaches"],
-            }
-        )
+        # Score breakdown (simplified)
+        score_breakdown = {
+            "base_reward": round(reward, 4),
+        }
 
         # Crisis surge: advance to next ticket
         if cfg.get("is_batch") and step < sess["max_steps"]:
@@ -335,23 +299,40 @@ class NexDeskEnv:
                 else:
                     return grade_resolve_step3(action, ticket)
             if task == "crisis_surge":
-                return grade_crisis_ticket(action, ticket, step)
-            return 0.0
+                # Simple grader for crisis_surge (priority + category + team)
+                score = 0.0
+                pred_priority = (action.get("priority") or "").strip().lower()
+                if pred_priority == ticket["gt_priority"]:
+                    score += 0.03
+                elif pred_priority in ticket.get("gt_priority_ok", []):
+                    score += 0.015
+                pred_category = (action.get("category") or "").strip().lower()
+                if pred_category == ticket["gt_category"]:
+                    score += 0.03
+                elif pred_category in ticket.get("gt_category_ok", []):
+                    score += 0.015
+                pred_team = (action.get("team") or "").strip().lower()
+                if pred_team == ticket["gt_team"]:
+                    score += 0.04
+                elif pred_team in ticket.get("gt_team_ok", []):
+                    score += 0.02
+                return _strict_clamp(score)
+            return _EPS
         except Exception as e:
             logger.error(f"Reward computation failed: {e}")
-            return 0.0
+            return _EPS
 
     def _compute_calibration(self, sess: Dict[str, Any]) -> float:
         """Compute confidence calibration score (1 - MAE)."""
         conf_hist = sess.get("confidence_history", [])
         acc_hist = sess.get("accuracy_history", [])
         if not conf_hist or len(conf_hist) != len(acc_hist):
-            return 0.0
+            return 0.5  # neutral default
         try:
             mae = sum(abs(c - a) for c, a in zip(conf_hist, acc_hist)) / len(conf_hist)
-            return max(0.0, 1.0 - mae)
+            return max(0.01, min(0.99, 1.0 - mae))
         except Exception:
-            return 0.0
+            return 0.5
 
     def _build_observation(self, session_id: str, last_reward: float) -> Dict[str, Any]:
         """Build observation dict for current state."""
