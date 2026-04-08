@@ -194,7 +194,7 @@ def get_action(client: OpenAI, obs: Dict[str, Any], step: int) -> Dict[str, Any]
 def run_task(client: OpenAI, task: str) -> None:
     rewards: List[float] = []
     steps_taken = 0
-    score = 0.0
+    score = 0.001  # Initialize > 0
     success = False
     session_id = ""
     error_msg = None
@@ -218,7 +218,7 @@ def run_task(client: OpenAI, task: str) -> None:
                 done = bool(result["done"])
                 error_msg = None
             except Exception as e:
-                reward = 0.0
+                reward = 0.001  # Never exactly 0.0
                 done = True
                 error_msg = str(e)[:100]
 
@@ -236,9 +236,9 @@ def run_task(client: OpenAI, task: str) -> None:
     except Exception as e:
         error_msg = str(e)[:100]
         if not rewards:
-            rewards = [0.0]
+            rewards = [0.001]  # Never 0.0
         steps_taken = steps_taken or 1
-        score = 0.0
+        score = 0.001  # strictly > 0
         success = False
         print(f"[DEBUG] Task {task} failed: {e}", flush=True)
 
