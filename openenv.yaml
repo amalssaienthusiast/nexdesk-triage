@@ -85,7 +85,7 @@ observation_space:
     # Innovation: Time pressure fields
     sla_deadline_minutes: {type: integer, description: "Minutes remaining until SLA breach"}
     queue_depth: {type: integer, description: "Number of pending tickets"}
-    stress_level: {type: number, description: "Current stress level 0.0-1.0"}
+    stress_level: {type: number, description: "Current stress level (0 to 1)"}
     
     # Innovation: Contextual information
     org_context: {type: object, description: "Organizational context for richer decisions"}
@@ -115,8 +115,8 @@ action_space:
     # Innovation: Confidence calibration
     confidence: 
       type: number
-      min: 0.0
-      max: 1.0
+      min: 0.001
+      max: 0.999
       description: "Agent's confidence in this action. Well-calibrated confidence earns bonus."
     
     # Innovation: Action types for advanced scenarios
@@ -146,7 +146,7 @@ innovations:
     
   confidence_calibration:
     description: >
-      Agents can optionally provide confidence scores (0.0-1.0) with each action.
+      Agents can optionally provide confidence scores (between 0 and 1) with each action.
       Well-calibrated agents (confidence ≈ accuracy) earn bonus rewards.
       Overconfident wrong answers incur penalty.
     

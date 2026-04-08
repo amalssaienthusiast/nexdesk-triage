@@ -83,7 +83,7 @@ class StepRequest(BaseModel):
     resolution_steps: Optional[List[str]] = Field(None, description="List of resolution steps")
     sla_hours: Optional[int] = Field(None, description="Estimated hours to resolve", ge=0, le=168)
     confidence: Optional[float] = Field(
-        None, ge=0.0, le=1.0, description="Agent's confidence (0.0-1.0)"
+        None, ge=0.001, le=0.999, description="Agent's confidence (0.001-0.999)"
     )
     action_type: Optional[str] = Field(
         None, description="classify, respond, resolve, delegate, escalate"
@@ -264,7 +264,7 @@ def action_schema() -> Dict[str, Any]:
         "first_response": {"type": "string"},
         "resolution_steps": {"type": "array", "items": {"type": "string"}},
         "sla_hours": {"type": "integer", "min": 0, "max": 168},
-        "confidence": {"type": "number", "min": 0.0, "max": 1.0},
+        "confidence": {"type": "number", "min": 0.001, "max": 0.999},
     }
 
 
