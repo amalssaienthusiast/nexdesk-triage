@@ -26,7 +26,7 @@ tasks:
       Includes optional confidence field for calibration scoring.
     difficulty: easy
     max_steps: 1
-    reward_range: [0.0, 1.0]
+    reward_range: [0.001, 0.999]
     sla_minutes: 60
 
   - id: ticket_route
@@ -36,7 +36,7 @@ tasks:
       Two-step episode with partial rewards at each step. Time pressure applies.
     difficulty: medium
     max_steps: 2
-    reward_range: [0.0, 1.0]
+    reward_range: [0.001, 0.999]
     sla_minutes: 30
 
   - id: ticket_resolve
@@ -48,7 +48,7 @@ tasks:
       Time pressure increases with each step.
     difficulty: hard
     max_steps: 3
-    reward_range: [0.0, 1.0]
+    reward_range: [0.001, 0.999]
     sla_minutes: 20
 
   - id: crisis_surge
@@ -59,7 +59,7 @@ tasks:
       Unique feature: batch ticket handling with dynamic stress levels.
     difficulty: hard
     max_steps: 10
-    reward_range: [0.0, 1.0]
+    reward_range: [0.001, 0.999]
     sla_minutes: 5
     is_batch: true
 
