@@ -3,6 +3,7 @@ NexDesk Graders
 Each grader returns a float strictly in (0.0, 1.0) — never 0.0 or 1.0 exactly.
 All graders are deterministic given the same input.
 """
+
 from typing import Any, Dict
 
 _EPS = 0.001  # minimum non-zero score / distance from 1.0
@@ -17,25 +18,26 @@ def _strict(score: float) -> float:
 # Helpers
 # ─────────────────────────────────────────────
 
+
 def _kw_score(text: str, keywords: list[str]) -> float:
     """Score based on how many keywords appear in text (case-insensitive)."""
     if not text or not keywords:
-        return 0.0
+        return _EPS
     text_lower = text.lower()
     hits = sum(1 for kw in keywords if kw.lower() in text_lower)
-    return min(hits / max(len(keywords) * 0.4, 1), 1.0)
+    return min(hits / max(len(keywords) * 0.4, 1), 1.0 - _EPS)
 
 
 def _sla_score(predicted: int | None, expected: int) -> float:
     """Score SLA estimate. Within 2x = 0.9, within 4x = 0.5, beyond = 0.1"""
     if predicted is None:
-        return 0.0
-    ratio = predicted / expected if expected > 0 else 1.0
+        return _EPS
+    ratio = predicted / expected if expected > 0 else 0.999
     if 0.5 <= ratio <= 2.0:
-        return 0.9   # good estimate — not 1.0 to avoid ceiling collision
+        return 0.9
     if 0.25 <= ratio <= 4.0:
         return 0.5
-    return 0.1       # wrong but not zero
+    return 0.1
 
 
 # ─────────────────────────────────────────────
@@ -44,8 +46,9 @@ def _sla_score(predicted: int | None, expected: int) -> float:
 # Components: priority (0.5) + category (0.5)
 # ─────────────────────────────────────────────
 
+
 def grade_classify(action: Dict[str, Any], ticket: Dict[str, Any]) -> float:
-    score = 0.0
+    score = _EPS
 
     # Priority score
     pred_priority = (action.get("priority") or "").strip().lower()
@@ -71,8 +74,9 @@ def grade_classify(action: Dict[str, Any], ticket: Dict[str, Any]) -> float:
 #   Step 2: affected_system(0.15) → total 1.0
 # ─────────────────────────────────────────────
 
+
 def grade_route_step1(action: Dict[str, Any], ticket: Dict[str, Any]) -> float:
-    score = 0.0
+    score = _EPS
 
     pred_priority = (action.get("priority") or "").strip().lower()
     if pred_priority == ticket["gt_priority"]:
@@ -114,8 +118,9 @@ def grade_route_step2(action: Dict[str, Any], ticket: Dict[str, Any]) -> float:
 #   Total: 1.0
 # ─────────────────────────────────────────────
 
+
 def grade_resolve_step1(action: Dict[str, Any], ticket: Dict[str, Any]) -> float:
-    score = 0.0
+    score = _EPS
 
     pred_priority = (action.get("priority") or "").strip().lower()
     if pred_priority == ticket["gt_priority"]:
@@ -139,7 +144,7 @@ def grade_resolve_step1(action: Dict[str, Any], ticket: Dict[str, Any]) -> float
 
 
 def grade_resolve_step2(action: Dict[str, Any], ticket: Dict[str, Any]) -> float:
-    score = 0.0
+    score = _EPS
 
     # affected system
     pred_system = (action.get("affected_system") or "").strip().lower()
@@ -159,7 +164,7 @@ def grade_resolve_step2(action: Dict[str, Any], ticket: Dict[str, Any]) -> float
 
 
 def grade_resolve_step3(action: Dict[str, Any], ticket: Dict[str, Any]) -> float:
-    score = 0.0
+    score = _EPS
 
     # resolution steps: list with relevant content
     steps = action.get("resolution_steps") or []

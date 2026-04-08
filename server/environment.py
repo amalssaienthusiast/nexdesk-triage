@@ -39,7 +39,7 @@ TASK_CONFIGS = {
         "required_fields": ["priority", "category"],
         "difficulty": "easy",
         "base_sla_minutes": 60,
-        "max_reward_per_step": {1: 1.0},
+        "max_reward_per_step": {1: 0.999},
     },
     "ticket_route": {
         "max_steps": 2,
@@ -136,7 +136,7 @@ class NexDeskEnv:
 
         current_ticket = tickets[0]
         queue_depth = random.randint(5, 25)
-        stress_level = min(queue_depth / 30.0, 1.0)
+        stress_level = min(queue_depth / 30.0, 0.999)
 
         # Adjust SLA based on priority
         base_sla = cfg.get("base_sla_minutes", 60)
@@ -156,7 +156,7 @@ class NexDeskEnv:
             "step": 0,
             "max_steps": cfg["max_steps"],
             "done": False,
-            "total_reward": 0.0,
+            "total_reward": _EPS,
             "rewards": [],
             "accumulated": {},
             "start_time": time.time(),
@@ -172,7 +172,7 @@ class NexDeskEnv:
         }
 
         logger.info(f"Reset: task={task}, session_id={session_id}")
-        return {"observation": self._build_observation(session_id, 0.0), "session_id": session_id}
+        return {"observation": self._build_observation(session_id, _EPS), "session_id": session_id}
 
     def step(self, session_id: str, action: Dict[str, Any]) -> Dict[str, Any]:
         """Take a step in the environment."""
@@ -222,11 +222,11 @@ class NexDeskEnv:
             if sess["current_ticket_idx"] < len(sess["tickets"]):
                 sess["ticket"] = sess["tickets"][sess["current_ticket_idx"]]
                 sess["accumulated"] = {}
-                sess["stress_level"] = max(0.0, sess["stress_level"] - 0.08)
+                sess["stress_level"] = max(_EPS, sess["stress_level"] - 0.08)
                 sess["queue_depth"] = max(0, sess["queue_depth"] - 1)
                 if random.random() < 0.3:
                     sess["queue_depth"] += 1
-                    sess["stress_level"] = min(1.0, sess["stress_level"] + 0.05)
+                    sess["stress_level"] = min(0.999, sess["stress_level"] + 0.05)
             sess["tickets_resolved"] += 1
 
         done = step >= sess["max_steps"]
@@ -270,7 +270,7 @@ class NexDeskEnv:
             "total_reward": round(sess["total_reward"], 4),
             "ticket_id": sess["ticket"]["id"],
             "sla_breaches": sess.get("sla_breaches", 0),
-            "stress_level": round(sess.get("stress_level", 0.0), 2),
+            "stress_level": round(sess.get("stress_level", _EPS), 2),
         }
 
     def get_metrics(self) -> Dict[str, Any]:
@@ -298,7 +298,7 @@ class NexDeskEnv:
                     return grade_resolve_step3(action, ticket)
             if task == "crisis_surge":
                 # Simple grader for crisis_surge (priority + category + team)
-                score = 0.0
+                score = _EPS
                 pred_priority = (action.get("priority") or "").strip().lower()
                 if pred_priority == ticket["gt_priority"]:
                     score += 0.03
