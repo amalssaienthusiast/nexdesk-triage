@@ -67,6 +67,9 @@ class NexDeskObservation(BaseModel):
     session_id: str
     message: str
 
+    done: bool = Field(default=False)
+    reward: Optional[float] = Field(default=None)
+
     # Innovation: Time pressure fields
     sla_deadline_minutes: Optional[int] = Field(
         None, description="Minutes remaining until SLA breach"

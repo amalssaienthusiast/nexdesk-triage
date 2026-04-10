@@ -36,7 +36,7 @@ TEMPERATURE = 0.2
 MAX_TOKENS = 512
 SUCCESS_THRESHOLD = 0.5
 
-TASKS = ["ticket_classify", "ticket_route", "ticket_resolve", "crisis_surge"]
+TASKS = ["ticket_classify", "ticket_route", "ticket_resolve"]
 
 # ─────────────────────────────────────────────
 # Log helpers  (MANDATORY FORMAT — do not change)
