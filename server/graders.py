@@ -28,7 +28,7 @@ def _sla_score(predicted: Optional[int], expected: int) -> float:
     # simple tier system for sla estimates
     if predicted is None:
         return _EPS
-    ratio = predicted / expected if expected > 0 else 1.0
+    ratio = predicted / expected if expected > 0 else 0.99
     if 0.8 <= ratio <= 1.2:
         return 0.99
     if 0.5 <= ratio <= 2.0:
@@ -75,12 +75,12 @@ def _team_score(predicted: str, ground_truth: str, acceptable: List[str]) -> flo
 def compute_time_penalty(elapsed_minutes: float, sla_deadline: int, stress_level: float) -> float:
     # scales penalty based on how close we are to blowing the SLA deadline
     if sla_deadline <= 0:
-        return 0.0
+        return _EPS
 
     ratio = elapsed_minutes / sla_deadline
 
     if ratio < 0.5:
-        return 0.0
+        return _EPS
     elif ratio < 1.0:
         base_penalty = (ratio - 0.5) * 0.4  # 0 to 0.2
     else:
@@ -93,7 +93,7 @@ def compute_time_penalty(elapsed_minutes: float, sla_deadline: int, stress_level
 def compute_confidence_bonus(confidence: float, accuracy: float) -> float:
     # give them a bonus if they know they are right, punish if they are hopelessly overconfident
     if confidence is None:
-        return 0.0
+        return _EPS
 
     error = abs(confidence - accuracy)
 
@@ -103,7 +103,7 @@ def compute_confidence_bonus(confidence: float, accuracy: float) -> float:
         return -0.08  # 8% penalty for overconfidence
     if accuracy > confidence + 0.3:
         return -0.03  # 3% penalty for underconfidence
-    return 0.0
+    return _EPS
 
 
 # breakdowns for the UI/eval metrics
@@ -267,7 +267,7 @@ def grade_resolve_step3(action: Dict[str, Any], ticket: Dict[str, Any]) -> float
     if isinstance(steps, list) and len(steps) >= 2:
         combined = " ".join(steps).lower()
         kw_score = _kw_score(combined, ticket.get("gt_keywords_resolution", []))
-        score += 0.15 * min(kw_score * 1.5, 1.0)
+        score += 0.15 * min(kw_score * 1.5, 0.99)
     elif isinstance(steps, list) and len(steps) == 1:
         score += 0.05
 

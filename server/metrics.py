@@ -115,15 +115,6 @@ class BusinessMetrics:
             "automation_success_rate": max(0.01, min(0.99, round(automation_rate, 4))),
             "sla_compliance_rate": max(0.01, min(0.99, round(sla_compliance_rate, 4))),
             "total_sla_breaches": total_sla_breaches,
-            "business_impact": {
-                "estimated_cost_savings_usd": round(cost_savings, 2),
-                "cost_per_manual_ticket": self.COST_PER_MANUAL_TICKET,
-                "cost_per_auto_ticket": self.COST_PER_AUTO_TICKET,
-                "cost_per_sla_breach": self.COST_PER_SLA_BREACH,
-                "manual_cost_baseline": round(manual_cost, 2),
-                "automation_cost": round(auto_cost, 2),
-                "breach_penalties": round(breach_cost, 2),
-            },
             "task_breakdown": task_breakdown,
         }
 
