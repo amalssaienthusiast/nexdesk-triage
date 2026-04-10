@@ -112,8 +112,8 @@ class BusinessMetrics:
             "total_tickets_processed": total_tickets,
             "avg_episode_reward": round(avg_reward, 4),
             "avg_confidence_calibration": round(avg_calibration, 4),
-            "automation_success_rate": round(automation_rate, 4),
-            "sla_compliance_rate": round(sla_compliance_rate, 4),
+            "automation_success_rate": max(0.01, min(0.99, round(automation_rate, 4))),
+            "sla_compliance_rate": max(0.01, min(0.99, round(sla_compliance_rate, 4))),
             "total_sla_breaches": total_sla_breaches,
             "business_impact": {
                 "estimated_cost_savings_usd": round(cost_savings, 2),
