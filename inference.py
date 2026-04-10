@@ -246,6 +246,8 @@ def run_task(client: OpenAI, task: str) -> None:
         error_msg = str(e)[:100]
         if not rewards:
             rewards = [0.01]
+            # Emit step log to prevent validator parser from summing 0 steps into score=0.0
+            log_step(step=1, action="{}", reward=0.01, done=True, error=error_msg)
         steps_taken = steps_taken or 1
         success = False
 

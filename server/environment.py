@@ -23,7 +23,7 @@ _EPS = 0.01  # For strict (0, 1) clamping (must survive :.2f formatting)
 
 def _strict_clamp(score: float) -> float:
     """Clamp score to strictly open interval (0, 1) — survives :.2f formatting."""
-    return round(max(_EPS, min(1.0 - _EPS, score)), 4)
+    return float(round(max(_EPS, min(1.0 - _EPS, float(score))), 4))
 
 
 from .tickets import TICKETS
