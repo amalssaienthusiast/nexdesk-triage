@@ -26,6 +26,8 @@ from openai import OpenAI
 API_BASE_URL = os.getenv("API_BASE_URL", "https://router.huggingface.co/v1")
 MODEL_NAME = os.getenv("MODEL_NAME", "Qwen/Qwen2.5-72B-Instruct")
 HF_TOKEN = os.getenv("HF_TOKEN")
+if HF_TOKEN is None:
+    raise ValueError("HF_TOKEN environment variable is required")
 ENV_BASE_URL = os.getenv("ENV_BASE_URL", "http://localhost:7860").rstrip("/")
 
 BENCHMARK = "nexdesk-ticket-triage"
@@ -49,15 +51,15 @@ def log_step(step: int, action: str, reward: float, done: bool, error: Optional[
     error_val = error if error else "null"
     done_val = str(done).lower()
     print(
-        f"[STEP] step={step} action={action} reward={reward:.4f} done={done_val} error={error_val}",
+        f"[STEP] step={step} action={action} reward={reward:.2f} done={done_val} error={error_val}",
         flush=True,
     )
 
 
-def log_end(success: bool, steps: int, score: float, rewards: List[float]) -> None:
-    rewards_str = ",".join(f"{r:.4f}" for r in rewards)
+def log_end(success: bool, steps: int, rewards: List[float]) -> None:
+    rewards_str = ",".join(f"{r:.2f}" for r in rewards)
     print(
-        f"[END] success={str(success).lower()} steps={steps} score={score:.4f} rewards={rewards_str}",
+        f"[END] success={str(success).lower()} steps={steps} rewards={rewards_str}",
         flush=True,
     )
 
@@ -181,7 +183,6 @@ def get_action(client: OpenAI, obs: Dict[str, Any], step: int) -> Dict[str, Any]
                 raw = raw[4:]
         return json.loads(raw.strip())
     except Exception as e:
-        print(f"[DEBUG] LLM error at step {step}: {e}", flush=True)
         # Fallback defaults
         return {"priority": "medium", "category": "other"}
 
@@ -236,13 +237,11 @@ def run_task(client: OpenAI, task: str) -> None:
     except Exception as e:
         error_msg = str(e)[:100]
         if not rewards:
-            rewards = [0.001]  # Never 0.0
+            rewards = [0.00]  # Never 0.0
         steps_taken = steps_taken or 1
-        score = 0.001  # strictly > 0
         success = False
-        print(f"[DEBUG] Task {task} failed: {e}", flush=True)
 
-    log_end(success=success, steps=steps_taken, score=score, rewards=rewards)
+    log_end(success=success, steps=steps_taken, rewards=rewards)
 
 
 # ─────────────────────────────────────────────
@@ -255,7 +254,6 @@ def main():
 
     for task in TASKS:
         run_task(client, task)
-        print("", flush=True)  # blank line between tasks
 
 
 if __name__ == "__main__":
