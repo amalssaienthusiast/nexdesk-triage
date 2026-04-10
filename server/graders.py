@@ -4,7 +4,7 @@ Each grader returns a float strictly in (0.0, 1.0) — never 0.0 or 1.0 exactly.
 All graders are deterministic given the same input.
 """
 
-from typing import Any, Dict
+from typing import Any, Dict, Optional, List
 
 _EPS = 0.01  # minimum non-zero score / distance from 1.0 (must survive :.2f formatting)
 
@@ -19,7 +19,7 @@ def _strict(score: float) -> float:
 # ─────────────────────────────────────────────
 
 
-def _kw_score(text: str, keywords: list[str]) -> float:
+def _kw_score(text: str, keywords: List[str]) -> float:
     """Score based on how many keywords appear in text (case-insensitive)."""
     if not text or not keywords:
         return _EPS
@@ -28,7 +28,7 @@ def _kw_score(text: str, keywords: list[str]) -> float:
     return min(hits / max(len(keywords) * 0.4, 1), 1.0 - _EPS)
 
 
-def _sla_score(predicted: int | None, expected: int) -> float:
+def _sla_score(predicted: Optional[int], expected: int) -> float:
     """Score SLA estimate. Within 2x = 0.9, within 4x = 0.5, beyond = 0.1"""
     if predicted is None:
         return _EPS
