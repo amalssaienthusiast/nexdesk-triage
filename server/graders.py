@@ -70,8 +70,8 @@ def grade_classify(action: Dict[str, Any], ticket: Dict[str, Any]) -> float:
 # ─────────────────────────────────────────────
 # Task 2: ticket_route  (medium)
 # Max score per step:
-#   Step 1: priority(0.25) + category(0.25) + team(0.35) = 0.85
-#   Step 2: affected_system(0.15) → total 1.0
+#   Step 1: priority(0.25) + category(0.25) + team(0.30) = 0.80
+#   Step 2: affected_system(0.15) → total 0.95
 # ─────────────────────────────────────────────
 
 
@@ -92,9 +92,9 @@ def grade_route_step1(action: Dict[str, Any], ticket: Dict[str, Any]) -> float:
 
     pred_team = (action.get("team") or "").strip().lower()
     if pred_team == ticket["gt_team"]:
-        score += 0.35
+        score += 0.30
     elif pred_team in ticket.get("gt_team_ok", []):
-        score += 0.17
+        score += 0.15
 
     return _strict(score)
 
@@ -112,10 +112,10 @@ def grade_route_step2(action: Dict[str, Any], ticket: Dict[str, Any]) -> float:
 # ─────────────────────────────────────────────
 # Task 3: ticket_resolve  (hard)
 # Max score per step:
-#   Step 1: priority(0.15) + category(0.15) + team(0.15) = 0.45
+#   Step 1: priority(0.15) + category(0.15) + team(0.10) = 0.40
 #   Step 2: affected_system(0.10) + first_response quality(0.20) = 0.30
 #   Step 3: resolution_steps(0.15) + sla_hours(0.10) = 0.25
-#   Total: 1.0
+#   Total: 0.95
 # ─────────────────────────────────────────────
 
 
@@ -136,9 +136,9 @@ def grade_resolve_step1(action: Dict[str, Any], ticket: Dict[str, Any]) -> float
 
     pred_team = (action.get("team") or "").strip().lower()
     if pred_team == ticket["gt_team"]:
-        score += 0.15
+        score += 0.10
     elif pred_team in ticket.get("gt_team_ok", []):
-        score += 0.07
+        score += 0.05
 
     return _strict(score)
 

@@ -47,7 +47,7 @@ TASK_CONFIGS = {
         "required_fields": ["priority", "category", "team", "affected_system"],
         "difficulty": "medium",
         "base_sla_minutes": 30,
-        "max_reward_per_step": {1: 0.85, 2: 0.15},
+        "max_reward_per_step": {1: 0.80, 2: 0.15},
     },
     "ticket_resolve": {
         "max_steps": 3,
@@ -63,7 +63,7 @@ TASK_CONFIGS = {
         ],
         "difficulty": "hard",
         "base_sla_minutes": 20,
-        "max_reward_per_step": {1: 0.45, 2: 0.30, 3: 0.25},
+        "max_reward_per_step": {1: 0.40, 2: 0.30, 3: 0.25},
     },
     "crisis_surge": {
         "max_steps": 10,
@@ -72,7 +72,7 @@ TASK_CONFIGS = {
         "difficulty": "hard",
         "base_sla_minutes": 5,
         "is_batch": True,
-        "max_reward_per_step": {i: 0.12 for i in range(1, 11)},
+        "max_reward_per_step": {i: 0.09 for i in range(1, 11)},
     },
 }
 
@@ -301,14 +301,14 @@ class NexDeskEnv:
                 score = _EPS
                 pred_priority = (action.get("priority") or "").strip().lower()
                 if pred_priority == ticket["gt_priority"]:
-                    score += 0.03
+                    score += 0.02
                 elif pred_priority in ticket.get("gt_priority_ok", []):
-                    score += 0.015
+                    score += 0.01
                 pred_category = (action.get("category") or "").strip().lower()
                 if pred_category == ticket["gt_category"]:
-                    score += 0.03
+                    score += 0.02
                 elif pred_category in ticket.get("gt_category_ok", []):
-                    score += 0.015
+                    score += 0.01
                 pred_team = (action.get("team") or "").strip().lower()
                 if pred_team == ticket["gt_team"]:
                     score += 0.04
