@@ -1,6 +1,13 @@
 """
-NexDesk Environment — Core Logic
-Handles session management, scoring, time pressure, crisis surge, and business metrics.
+NexDesk Environment — Core Logic with Advanced Features
+Handles session management, time pressure, confidence calibration, crisis surge, and business metrics.
+
+Advanced Features:
+- Time pressure penalty with SLA deadlines
+- Confidence calibration bonus/penalty
+- Multi-dimensional score breakdown
+- Crisis surge batch processing
+- Business metrics tracking
 """
 
 import logging
@@ -16,22 +23,25 @@ from .graders import (
     grade_resolve_step1,
     grade_resolve_step2,
     grade_resolve_step3,
+    grade_crisis_ticket,
+    compute_confidence_bonus,
+    compute_time_penalty,
+    get_score_breakdown,
 )
-
-_EPS = 0.01  # For strict (0, 1) clamping (must survive :.2f formatting)
-
-
-def _strict_clamp(score: float) -> float:
-    """Clamp score to strictly open interval (0, 1) — survives :.2f formatting."""
-    return float(round(max(_EPS, min(1.0 - _EPS, float(score))), 4))
-
-
 from .tickets import TICKETS
 from .metrics import BusinessMetrics
 
 logger = logging.getLogger(__name__)
 
-# Task configurations
+_EPS = 0.01
+
+
+def _strict_clamp(score: float) -> float:
+    """Clamp score to strictly open interval (0, 1) — Phase 2 requirement."""
+    return float(round(max(_EPS, min(0.99, float(score))), 4))
+
+
+# Task configurations with max rewards per step
 TASK_CONFIGS = {
     "ticket_classify": {
         "max_steps": 1,
@@ -47,7 +57,7 @@ TASK_CONFIGS = {
         "required_fields": ["priority", "category", "team", "affected_system"],
         "difficulty": "medium",
         "base_sla_minutes": 30,
-        "max_reward_per_step": {1: 0.80, 2: 0.15},
+        "max_reward_per_step": {1: 0.85, 2: 0.15},
     },
     "ticket_resolve": {
         "max_steps": 3,
@@ -63,7 +73,7 @@ TASK_CONFIGS = {
         ],
         "difficulty": "hard",
         "base_sla_minutes": 20,
-        "max_reward_per_step": {1: 0.40, 2: 0.30, 3: 0.25},
+        "max_reward_per_step": {1: 0.45, 2: 0.30, 3: 0.25},
     },
     "crisis_surge": {
         "max_steps": 10,
@@ -72,11 +82,11 @@ TASK_CONFIGS = {
         "difficulty": "hard",
         "base_sla_minutes": 5,
         "is_batch": True,
-        "max_reward_per_step": {i: 0.09 for i in range(1, 11)},
+        "max_reward_per_step": {i: 0.12 for i in range(1, 11)},
     },
 }
 
-# Organizational context for observations
+# Organizational context for richer observations
 ORG_CONTEXT = {
     "total_employees": 500,
     "departments": [
@@ -103,13 +113,13 @@ ORG_CONTEXT = {
 
 
 class NexDeskEnv:
-    """NexDesk IT Ticket Triage Environment with session management and scoring."""
+    """NexDesk IT Ticket Triage Environment with advanced features."""
 
     def __init__(self):
         self._sessions: Dict[str, Dict[str, Any]] = {}
         self._metrics = BusinessMetrics()
         self._session_timeout_seconds = 3600
-        logger.info("NexDesk environment initialized")
+        logger.info("NexDesk environment initialized with advanced features")
 
     def reset(self, task: Optional[str] = None) -> Dict[str, Any]:
         """Start a new episode for the given task."""
@@ -117,9 +127,7 @@ class NexDeskEnv:
 
         task = (task or "ticket_classify").strip().lower()
         if task not in TASK_CONFIGS:
-            raise ValueError(
-                f"Unknown task: '{task}'. Choose from: {', '.join(TASK_CONFIGS.keys())}"
-            )
+            raise ValueError(f"Unknown task: '{task}'. Choose from: {', '.join(TASK_CONFIGS.keys())}")
 
         cfg = TASK_CONFIGS[task]
 
@@ -128,13 +136,12 @@ class NexDeskEnv:
             num_tickets = min(cfg["max_steps"], len(TICKETS))
             tickets = random.sample(TICKETS, k=num_tickets)
             priority_order = {"critical": 0, "high": 1, "medium": 2, "low": 3}
-            tickets = sorted(
-                tickets, key=lambda t: priority_order.get(t.get("gt_priority", "medium"), 2)
-            )
+            tickets = sorted(tickets, key=lambda t: priority_order.get(t.get("gt_priority", "medium"), 2))
+            current_ticket = tickets[0]
         else:
             tickets = [random.choice(TICKETS)]
+            current_ticket = tickets[0]
 
-        current_ticket = tickets[0]
         queue_depth = random.randint(5, 25)
         stress_level = min(queue_depth / 30.0, 0.99)
 
@@ -142,9 +149,9 @@ class NexDeskEnv:
         base_sla = cfg.get("base_sla_minutes", 60)
         gt_priority = current_ticket.get("gt_priority", "medium")
         if gt_priority == "critical":
-            base_sla = base_sla // 2
+            base_sla = max(1, base_sla // 2)
         elif gt_priority == "high":
-            base_sla = int(base_sla * 0.75)
+            base_sla = max(1, int(base_sla * 0.75))
 
         session_id = str(uuid.uuid4())
         self._sessions[session_id] = {
@@ -175,7 +182,7 @@ class NexDeskEnv:
         return {"observation": self._build_observation(session_id, _EPS), "session_id": session_id}
 
     def step(self, session_id: str, action: Dict[str, Any]) -> Dict[str, Any]:
-        """Take a step in the environment."""
+        """Take a step in the environment with time pressure and confidence calibration."""
         if not session_id or not isinstance(session_id, str):
             raise ValueError("session_id is required")
         if session_id not in self._sessions:
@@ -199,22 +206,68 @@ class NexDeskEnv:
                     sess["accumulated"][k] = v
         merged = sess["accumulated"]
 
-        # Compute base reward (already clamped by graders)
+        # Compute base reward
         try:
-            reward = self._compute_reward(task, step, merged, ticket)
+            base_reward = self._compute_reward(task, step, merged, ticket)
         except Exception as e:
             logger.error(f"Reward computation error: {e}")
-            reward = _EPS
+            base_reward = _EPS
 
-        # Final clamp to strictly (0, 1)
+        # Apply time penalty (advanced feature)
+        elapsed_minutes = (time.time() - sess["start_time"]) / 60.0
+        try:
+            time_penalty = compute_time_penalty(
+                elapsed_minutes, sess["sla_deadline_minutes"], sess["stress_level"]
+            )
+        except Exception as e:
+            logger.error(f"Time penalty error: {e}")
+            time_penalty = 0.0
+
+        # Apply confidence calibration bonus/penalty (advanced feature)
+        confidence = action.get("confidence") if action else None
+        confidence_bonus = 0.0
+        normalized_accuracy = 0.0
+
+        if confidence is not None and isinstance(confidence, (int, float)):
+            try:
+                max_reward_for_step = cfg.get("max_reward_per_step", {}).get(step, 1.0)
+                normalized_accuracy = base_reward / max_reward_for_step if max_reward_for_step > 0 else 0.0
+                confidence_bonus = compute_confidence_bonus(confidence, normalized_accuracy)
+                sess["confidence_history"].append(float(confidence))
+                sess["accuracy_history"].append(normalized_accuracy)
+            except Exception as e:
+                logger.error(f"Confidence bonus error: {e}")
+                confidence_bonus = 0.0
+
+        # Final reward calculation with penalties and bonuses
+        reward = base_reward * (1.0 - time_penalty) + confidence_bonus
+
+        # Track SLA breaches
+        sla_penalty = 0.0
+        if elapsed_minutes > sess["sla_deadline_minutes"]:
+            sess["sla_breaches"] += 1
+            sla_penalty = 0.05 * sess["sla_breaches"]
+            reward = reward * (1.0 - min(sla_penalty, 0.3))
+
         reward = _strict_clamp(reward)
+
         sess["total_reward"] += reward
         sess["rewards"].append(reward)
 
-        # Score breakdown (simplified)
-        score_breakdown = {
-            "base_reward": round(reward, 4),
-        }
+        # Get multi-dimensional score breakdown (advanced feature)
+        try:
+            score_breakdown = get_score_breakdown(task, step, merged, ticket)
+        except Exception as e:
+            logger.error(f"Score breakdown error: {e}")
+            score_breakdown = {}
+
+        score_breakdown.update({
+            "time_penalty": round(time_penalty, 4),
+            "confidence_bonus": round(confidence_bonus, 4),
+            "base_reward": round(base_reward, 4),
+            "sla_penalty": round(sla_penalty, 4),
+            "sla_breaches": sess["sla_breaches"],
+        })
 
         # Crisis surge: advance to next ticket
         if cfg.get("is_batch") and step < sess["max_steps"]:
@@ -224,6 +277,7 @@ class NexDeskEnv:
                 sess["accumulated"] = {}
                 sess["stress_level"] = max(_EPS, sess["stress_level"] - 0.08)
                 sess["queue_depth"] = max(0, sess["queue_depth"] - 1)
+                # Random new ticket arrival (30% chance)
                 if random.random() < 0.3:
                     sess["queue_depth"] += 1
                     sess["stress_level"] = min(0.99, sess["stress_level"] + 0.05)
@@ -253,6 +307,8 @@ class NexDeskEnv:
                 "total_reward": round(sess["total_reward"], 4),
                 "task": task,
                 "score_breakdown": score_breakdown,
+                "time_penalty": round(time_penalty, 4),
+                "confidence_bonus": round(confidence_bonus, 4),
             },
         }
 

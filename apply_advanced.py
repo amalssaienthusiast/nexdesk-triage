@@ -1,4 +1,6 @@
-"""
+import json
+
+graders_script = """\"\"\"
 NexDesk Graders - Complete with all advanced features
 Each grader returns a float strictly in (0.01, 0.99) for Phase 2 compliance.
 All graders are deterministic given the same input.
@@ -8,7 +10,7 @@ Features:
 - Confidence calibration bonus/penalty  
 - Time pressure penalty
 - Crisis mode grading with prioritization bonuses
-"""
+\"\"\"
 
 from typing import Any, Dict, Optional, List
 
@@ -16,7 +18,7 @@ _EPS = 0.01
 
 
 def _strict(score: float) -> float:
-    """Clamp score to strictly open interval (0, 1) - Phase 2 requirement."""
+    \"\"\"Clamp score to strictly open interval (0, 1) - Phase 2 requirement.\"\"\"
     return float(round(max(_EPS, min(0.99, float(score))), 4))
 
 
@@ -26,7 +28,7 @@ def _strict(score: float) -> float:
 
 
 def _kw_score(text: str, keywords: List[str]) -> float:
-    """Score based on how many keywords appear in text (case-insensitive)."""
+    \"\"\"Score based on how many keywords appear in text (case-insensitive).\"\"\"
     if not text or not keywords:
         return _EPS
     text_lower = text.lower()
@@ -35,7 +37,7 @@ def _kw_score(text: str, keywords: List[str]) -> float:
 
 
 def _sla_score(predicted: Optional[int], expected: int) -> float:
-    """Score SLA estimate. Exact = 0.99, within 2x = 0.7, within 4x = 0.4, beyond = 0.05"""
+    \"\"\"Score SLA estimate. Exact = 0.99, within 2x = 0.7, within 4x = 0.4, beyond = 0.05\"\"\"
     if predicted is None:
         return _EPS
     ratio = predicted / expected if expected > 0 else 1.0
@@ -49,7 +51,7 @@ def _sla_score(predicted: Optional[int], expected: int) -> float:
 
 
 def _priority_score(predicted: str, ground_truth: str, acceptable: List[str]) -> float:
-    """Score priority prediction."""
+    \"\"\"Score priority prediction.\"\"\"
     pred = (predicted or "").strip().lower()
     if pred == ground_truth:
         return 1.0
@@ -59,7 +61,7 @@ def _priority_score(predicted: str, ground_truth: str, acceptable: List[str]) ->
 
 
 def _category_score(predicted: str, ground_truth: str, acceptable: List[str]) -> float:
-    """Score category prediction."""
+    \"\"\"Score category prediction.\"\"\"
     pred = (predicted or "").strip().lower()
     if pred == ground_truth:
         return 1.0
@@ -69,7 +71,7 @@ def _category_score(predicted: str, ground_truth: str, acceptable: List[str]) ->
 
 
 def _team_score(predicted: str, ground_truth: str, acceptable: List[str]) -> float:
-    """Score team assignment."""
+    \"\"\"Score team assignment.\"\"\"
     pred = (predicted or "").strip().lower()
     if pred == ground_truth:
         return 1.0
@@ -84,12 +86,12 @@ def _team_score(predicted: str, ground_truth: str, acceptable: List[str]) -> flo
 
 
 def compute_time_penalty(elapsed_minutes: float, sla_deadline: int, stress_level: float) -> float:
-    """
+    \"\"\"
     Compute penalty for time pressure.
     - No penalty if under 50% of SLA
     - Linear penalty from 50% to 100%
     - Max 35% penalty + stress multiplier
-    """
+    \"\"\"
     if sla_deadline <= 0:
         return 0.0
 
@@ -107,11 +109,11 @@ def compute_time_penalty(elapsed_minutes: float, sla_deadline: int, stress_level
 
 
 def compute_confidence_bonus(confidence: float, accuracy: float) -> float:
-    """
+    \"\"\"
     Compute bonus/penalty for confidence calibration.
     Well-calibrated agents (confidence ≈ accuracy) get bonus.
     Overconfident wrong answers get penalty.
-    """
+    \"\"\"
     if confidence is None:
         return 0.0
 
@@ -134,7 +136,7 @@ def compute_confidence_bonus(confidence: float, accuracy: float) -> float:
 def get_score_breakdown(
     task: str, step: int, action: Dict[str, Any], ticket: Dict[str, Any]
 ) -> Dict[str, float]:
-    """Return detailed score breakdown by dimension for analysis."""
+    \"\"\"Return detailed score breakdown by dimension for analysis.\"\"\"
     breakdown = {}
 
     pred_priority = (action.get("priority") or "").strip().lower()
@@ -324,7 +326,7 @@ def grade_resolve_step3(action: Dict[str, Any], ticket: Dict[str, Any]) -> float
 
 
 def grade_crisis_ticket(action: Dict[str, Any], ticket: Dict[str, Any], step: int) -> float:
-    """Grade a single ticket in crisis surge mode with prioritization bonuses."""
+    \"\"\"Grade a single ticket in crisis surge mode with prioritization bonuses.\"\"\"
     score = _EPS
 
     pred_priority = (action.get("priority") or "").strip().lower()
@@ -364,7 +366,7 @@ def grade_crisis_ticket(action: Dict[str, Any], ticket: Dict[str, Any], step: in
 def grade_full_episode(
     task: str, rewards: List[float], metadata: Optional[Dict] = None
 ) -> Dict[str, Any]:
-    """Compute comprehensive episode metrics."""
+    \"\"\"Compute comprehensive episode metrics.\"\"\"
     total = sum(rewards)
 
     result = {
@@ -383,3 +385,7 @@ def grade_full_episode(
             result["sla_breaches"] = metadata["sla_breaches"]
 
     return result
+"""
+
+with open("server/graders.py", "w") as f:
+    f.write(graders_script)
