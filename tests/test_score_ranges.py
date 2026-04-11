@@ -1,5 +1,11 @@
 from server.environment import NexDeskEnv
-from server.graders import grade_classify, grade_crisis, grade_resolve, grade_route
+from server.graders import (
+    grade_classify,
+    grade_crisis,
+    grade_full_episode,
+    grade_resolve,
+    grade_route,
+)
 from server.tickets import TICKETS
 
 
@@ -56,3 +62,29 @@ def test_environment_rewards_and_metrics_stay_strictly_in_range():
     summary = env.get_metrics()
     assert 0.0 < summary["avg_episode_reward"] < 1.0
     assert 0.0 < summary["automation_success_rate"] < 1.0
+
+
+def test_grade_full_episode_metadata_stays_strictly_in_range():
+    result = grade_full_episode(
+        "ticket_resolve",
+        rewards=[0.4, 0.3, 0.28],
+        metadata={
+            "time_penalties": [0.4, 0.4, 0.4],
+            "confidence_bonuses": [-0.08, 0.05, -0.08],
+            "sla_breaches": 2,
+            "confidence_history": [1.0, 0.9, 0.1],
+            "accuracy_history": [0.0, 0.7, 0.4],
+        },
+    )
+
+    def assert_float_range(obj):
+        if isinstance(obj, dict):
+            for value in obj.values():
+                assert_float_range(value)
+        elif isinstance(obj, list):
+            for value in obj:
+                assert_float_range(value)
+        elif isinstance(obj, float):
+            assert 0.0 < obj < 1.0
+
+    assert_float_range(result)

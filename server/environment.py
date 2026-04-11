@@ -224,8 +224,8 @@ class NexDeskEnv:
                 max_reward_for_step = cfg.get("max_reward_per_step", {}).get(step, 1.0)
                 normalized_accuracy = base_reward / max_reward_for_step if max_reward_for_step > 0 else 0.0
                 confidence_bonus = _compute_confidence_bonus(confidence, normalized_accuracy)
-                sess["confidence_history"].append(float(confidence))
-                sess["accuracy_history"].append(normalized_accuracy)
+                sess["confidence_history"].append(_strict_clamp(float(confidence)))
+                sess["accuracy_history"].append(_strict_clamp(normalized_accuracy))
             except Exception as e:
                 logger.error(f"Confidence bonus error: {e}")
                 confidence_bonus = _EPS

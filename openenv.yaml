@@ -12,7 +12,7 @@ tags:
   - routing
   - nlp
   - real-world
-repository: ""
+repository: "https://github.com/amalssaienthusiast/nexdesk-ticket-triage"
 tasks:
   - id: ticket_classify
     description: "Classify a support ticket's priority and category"

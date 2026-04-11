@@ -556,20 +556,20 @@ def grade_full_episode(
 ) -> Dict[str, Any]:
     total = sum(rewards)
     result = {
-        "total_score": max(0.01, min(0.99, round(total, 4))),
-        "step_rewards": [round(r, 4) for r in rewards],
+        "total_score": _strict(total),
+        "step_rewards": [_strict(r) for r in rewards],
         "num_steps": len(rewards),
-        "avg_step_reward": max(0.01, min(0.99, round(total / len(rewards), 4))) if rewards else _EPS,
+        "avg_step_reward": _strict(total / len(rewards)) if rewards else _EPS,
     }
     if metadata:
         if "time_penalties" in metadata:
-            result["total_time_penalty"] = round(sum(metadata["time_penalties"]), 4)
+            result["total_time_penalty"] = _strict(sum(metadata["time_penalties"]))
         if "confidence_bonuses" in metadata:
-            result["total_confidence_bonus"] = round(sum(metadata["confidence_bonuses"]), 4)
+            result["total_confidence_bonus"] = _strict(sum(metadata["confidence_bonuses"]))
         if "sla_breaches" in metadata:
             result["sla_breaches"] = metadata["sla_breaches"]
         if "confidence_history" in metadata and "accuracy_history" in metadata:
-            result["ece"] = round(
-                compute_ece(metadata["confidence_history"], metadata["accuracy_history"]), 4
+            result["ece"] = _strict(
+                compute_ece(metadata["confidence_history"], metadata["accuracy_history"])
             )
     return result
