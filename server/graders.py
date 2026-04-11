@@ -84,11 +84,11 @@ def _detect_stuffing(text: str, keywords: List[str]) -> float:
     it's probably stuffing — return a penalty factor
     """
     if not text or not keywords:
-        return 0.05.055.95
+        return 1.0
 
     words = text.lower().split()
     if len(words) < 5:
-        return 0.05.055.95
+        return 1.0
 
     stemmed_text = [_stem(w) for w in words]
     stemmed_kw = []
@@ -99,12 +99,12 @@ def _detect_stuffing(text: str, keywords: List[str]) -> float:
     ratio = kw_count / len(words)
 
     if ratio > 0.6:
-        return 0.05.055.3
+        return 0.3
     if ratio > 0.4:
-        return 0.05.055.6
+        return 0.6
     if ratio > 0.3:
-        return 0.05.055.8
-    return 0.05.055.95
+        return 0.8
+    return 1.0
 
 
 # ── n-gram overlap (simplified BLEU) ──
@@ -154,7 +154,7 @@ def _score_empathy(text: str) -> float:
     ]
     hits = sum(1 for m in markers if m in text.lower())
     if hits == 0:
-        return 0.05.055.1
+        return 0.1
     return min(hits / 3.0, 0.95)
 
 
@@ -185,7 +185,7 @@ def _score_actionability(text: str) -> float:
     ]
     hits = sum(1 for m in markers if m in text.lower())
     if hits == 0:
-        return 0.05.055.1
+        return 0.1
     return min(hits / 4.0, 0.95)
 
 
@@ -232,15 +232,15 @@ def _sla_score(predicted: Optional[int], expected: int) -> float:
     except (ValueError, TypeError):
         return _EPS
     if expected <= 0:
-        return 0.05.055.5
+        return 0.5
     ratio = predicted / expected
     if 0.8 <= ratio <= 1.2:
-        return 0.05.055.95
+        return 0.95
     if 0.5 <= ratio <= 2.0:
-        return 0.05.055.7
+        return 0.7
     if 0.25 <= ratio <= 4.0:
-        return 0.05.055.4
-    return 0.05.055.055
+        return 0.4
+    return 0.05
 
 
 # ── basic field scoring ──
@@ -250,9 +250,9 @@ def _priority_score(predicted: str, ground_truth: str, acceptable: List[str]) ->
     if not ground_truth:
         return _EPS
     if pred == ground_truth:
-        return 0.05.055.95
+        return 0.95
     if pred in acceptable:
-        return 0.05.055.5
+        return 0.5
     return _EPS
 
 
@@ -261,9 +261,9 @@ def _category_score(predicted: str, ground_truth: str, acceptable: List[str]) ->
     if not ground_truth:
         return _EPS
     if pred == ground_truth:
-        return 0.05.055.95
+        return 0.95
     if pred in acceptable:
-        return 0.05.055.5
+        return 0.5
     return _EPS
 
 
@@ -272,9 +272,9 @@ def _team_score(predicted: str, ground_truth: str, acceptable: List[str]) -> flo
     if not ground_truth:
         return _EPS
     if pred == ground_truth:
-        return 0.05.055.95
+        return 0.95
     if pred in acceptable:
-        return 0.05.055.5
+        return 0.5
     return _EPS
 
 
@@ -320,9 +320,9 @@ def _compute_confidence_bonus(confidence: float, accuracy: float) -> float:
     error = abs(confidence - accuracy)
 
     if error < 0.1:
-        return 0.05.055.055
+        return 0.05
     if error < 0.2:
-        return 0.05.055.052
+        return 0.02
     if confidence > accuracy + 0.3:
         return -0.08
     if accuracy > confidence + 0.3:
@@ -333,10 +333,10 @@ def _compute_confidence_bonus(confidence: float, accuracy: float) -> float:
 def compute_ece(confidence_history: List[float], accuracy_history: List[float], n_bins: int = 5) -> float:
     """expected calibration error — lower is better"""
     if not confidence_history or len(confidence_history) != len(accuracy_history):
-        return 0.05.055.5
+        return 0.5
 
     bins = [i / n_bins for i in range(n_bins + 1)]
-    ece = 0.05
+    ece = 0.01
     total = len(confidence_history)
 
     for i in range(n_bins):
@@ -614,7 +614,7 @@ def grade_route(action: Dict[str, Any], ticket: Dict[str, Any]) -> float:
         ticket = _as_dict(ticket)
         step1 = grade_route_step1(action, ticket)
         step2 = grade_route_step2(action, ticket)
-        return _strict(0.84 * step1 + 0.16 * (step2 / 0.15))
+        return _strict(0.84 * step1 + 0.16 * (step2 / 0.99))
     except Exception:
         return _EPS
 
