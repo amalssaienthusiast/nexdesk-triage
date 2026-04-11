@@ -62,6 +62,8 @@ def env_reset(task: str) -> Dict[str, Any]:
 
 
 def env_step(session_id: str, action: Dict[str, Any]) -> Dict[str, Any]:
+    action = dict(action or {})
+    action.pop("session_id", None)
     payload = {"session_id": session_id, **action}
     r = requests.post(f"{ENV_BASE_URL}/step", json=payload, timeout=30)
     r.raise_for_status()
@@ -132,14 +134,14 @@ SYSTEM_PROMPT = textwrap.dedent("""
 
 
 def build_prompt(obs: Dict[str, Any], step: int) -> str:
-    task = obs["task"]
+    task = obs.get("task", "ticket_classify")
 
     ticket_block = (
-        f"Ticket ID: {obs['ticket_id']}\n"
-        f"Subject: {obs['subject']}\n"
-        f"Description: {obs['description']}\n"
-        f"Submitter: {obs['submitter']} ({obs['department']})\n"
-        f"Submitted: {obs['submitted_at']}\n"
+        f"Ticket ID: {obs.get('ticket_id', 'N/A')}\n"
+        f"Subject: {obs.get('subject', 'N/A')}\n"
+        f"Description: {obs.get('description', 'N/A')}\n"
+        f"Submitter: {obs.get('submitter', 'N/A')} ({obs.get('department', 'N/A')})\n"
+        f"Submitted: {obs.get('submitted_at', 'N/A')}\n"
         f"SLA Deadline: {obs.get('sla_deadline_minutes', 'N/A')} minutes\n"
         f"Queue Depth: {obs.get('queue_depth', 'N/A')} tickets\n"
         f"Stress Level: {obs.get('stress_level', 'N/A')}"
@@ -270,8 +272,7 @@ def get_action(client: OpenAI, obs: Dict[str, Any], step: int) -> Dict[str, Any]
             raw = (completion.choices[0].message.content or "{}").strip()
 
             # strip markdown fences if the model adds them anyway
-            raw = re.sub(r"^```(?:json)?\s*", "", raw)
-            raw = re.sub(r"\s*```$", "", raw)
+            raw = re.sub(r"```(?:json)?", "", raw).strip()
 
             # find the json object
             start = raw.find("{")
@@ -311,7 +312,8 @@ def get_action(client: OpenAI, obs: Dict[str, Any], step: int) -> Dict[str, Any]
                 elif step == 3:
                     if not action.get("resolution_steps") or not isinstance(action["resolution_steps"], list):
                         action["resolution_steps"] = ["Investigate the reported issue", "Apply appropriate fix", "Verify resolution"]
-                    if not action.get("sla_hours"):
+                    sla = action.get("sla_hours")
+                    if not isinstance(sla, (int, float)) or sla <= 0:
                         action["sla_hours"] = 8
 
             return action
@@ -354,7 +356,7 @@ def _task_defaults(task: str, step: int) -> Dict[str, Any]:
 def run_task(client: OpenAI, task: str) -> None:
     rewards: List[float] = []
     steps_taken = 0
-    score = 0.001
+    score = 0.01
     success = False
     session_id = ""
     error_msg = None
@@ -374,7 +376,7 @@ def run_task(client: OpenAI, task: str) -> None:
             try:
                 result = env_step(session_id, action)
                 obs = result["observation"]
-                reward = float(result["reward"])
+                reward = max(0.01, min(0.99, float(result["reward"])))
                 done = bool(result["done"])
                 error_msg = None
             except requests.exceptions.HTTPError as e:
@@ -398,7 +400,7 @@ def run_task(client: OpenAI, task: str) -> None:
             if done:
                 break
 
-        score = sum(rewards)
+        score = max(0.01, min(0.99, sum(rewards) / max(len(rewards), 1)))
         success = score >= SUCCESS_THRESHOLD
 
     except Exception as e:

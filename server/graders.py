@@ -247,6 +247,8 @@ def _sla_score(predicted: Optional[int], expected: int) -> float:
 
 def _priority_score(predicted: str, ground_truth: str, acceptable: List[str]) -> float:
     pred = _safe_text(predicted).strip().lower()
+    if not ground_truth:
+        return _EPS
     if pred == ground_truth:
         return 0.99
     if pred in acceptable:
@@ -256,6 +258,8 @@ def _priority_score(predicted: str, ground_truth: str, acceptable: List[str]) ->
 
 def _category_score(predicted: str, ground_truth: str, acceptable: List[str]) -> float:
     pred = _safe_text(predicted).strip().lower()
+    if not ground_truth:
+        return _EPS
     if pred == ground_truth:
         return 0.99
     if pred in acceptable:
@@ -265,6 +269,8 @@ def _category_score(predicted: str, ground_truth: str, acceptable: List[str]) ->
 
 def _team_score(predicted: str, ground_truth: str, acceptable: List[str]) -> float:
     pred = _safe_text(predicted).strip().lower()
+    if not ground_truth:
+        return _EPS
     if pred == ground_truth:
         return 0.99
     if pred in acceptable:
@@ -407,15 +413,17 @@ def grade_classify(action: Dict[str, Any], ticket: Dict[str, Any]) -> float:
         score = _EPS
 
         pp = _safe_text(action.get("priority")).strip().lower()
-        if pp == ticket.get("gt_priority", ""):
+        gt_p = ticket.get("gt_priority", "")
+        if gt_p and pp == gt_p:
             score += 0.5
-        elif pp in ticket.get("gt_priority_ok", []):
+        elif gt_p and pp in ticket.get("gt_priority_ok", []):
             score += 0.25
 
         pc = _safe_text(action.get("category")).strip().lower()
-        if pc == ticket.get("gt_category", ""):
+        gt_c = ticket.get("gt_category", "")
+        if gt_c and pc == gt_c:
             score += 0.5
-        elif pc in ticket.get("gt_category_ok", []):
+        elif gt_c and pc in ticket.get("gt_category_ok", []):
             score += 0.25
 
         return _strict(score)
@@ -432,21 +440,24 @@ def grade_route_step1(action: Dict[str, Any], ticket: Dict[str, Any]) -> float:
         score = _EPS
 
         pp = _safe_text(action.get("priority")).strip().lower()
-        if pp == ticket.get("gt_priority", ""):
+        gt_p = ticket.get("gt_priority", "")
+        if gt_p and pp == gt_p:
             score += 0.25
-        elif pp in ticket.get("gt_priority_ok", []):
+        elif gt_p and pp in ticket.get("gt_priority_ok", []):
             score += 0.12
 
         pc = _safe_text(action.get("category")).strip().lower()
-        if pc == ticket.get("gt_category", ""):
+        gt_c = ticket.get("gt_category", "")
+        if gt_c and pc == gt_c:
             score += 0.25
-        elif pc in ticket.get("gt_category_ok", []):
+        elif gt_c and pc in ticket.get("gt_category_ok", []):
             score += 0.12
 
         pt = _safe_text(action.get("team")).strip().lower()
-        if pt == ticket.get("gt_team", ""):
+        gt_t = ticket.get("gt_team", "")
+        if gt_t and pt == gt_t:
             score += 0.30
-        elif pt in ticket.get("gt_team_ok", []):
+        elif gt_t and pt in ticket.get("gt_team_ok", []):
             score += 0.15
 
         return _strict(score)
@@ -478,21 +489,24 @@ def grade_resolve_step1(action: Dict[str, Any], ticket: Dict[str, Any]) -> float
         score = _EPS
 
         pp = _safe_text(action.get("priority")).strip().lower()
-        if pp == ticket.get("gt_priority", ""):
+        gt_p = ticket.get("gt_priority", "")
+        if gt_p and pp == gt_p:
             score += 0.12
-        elif pp in ticket.get("gt_priority_ok", []):
+        elif gt_p and pp in ticket.get("gt_priority_ok", []):
             score += 0.06
 
         pc = _safe_text(action.get("category")).strip().lower()
-        if pc == ticket.get("gt_category", ""):
+        gt_c = ticket.get("gt_category", "")
+        if gt_c and pc == gt_c:
             score += 0.13
-        elif pc in ticket.get("gt_category_ok", []):
+        elif gt_c and pc in ticket.get("gt_category_ok", []):
             score += 0.06
 
         pt = _safe_text(action.get("team")).strip().lower()
-        if pt == ticket.get("gt_team", ""):
+        gt_t = ticket.get("gt_team", "")
+        if gt_t and pt == gt_t:
             score += 0.15
-        elif pt in ticket.get("gt_team_ok", []):
+        elif gt_t and pt in ticket.get("gt_team_ok", []):
             score += 0.07
 
         return _strict(score)
@@ -557,27 +571,30 @@ def grade_crisis_ticket(action: Dict[str, Any], ticket: Dict[str, Any], step: in
         score = _EPS
 
         pp = _safe_text(action.get("priority")).strip().lower()
-        if pp == ticket.get("gt_priority", ""):
+        gt_p = ticket.get("gt_priority", "")
+        if gt_p and pp == gt_p:
             score += 0.02
-        elif pp in ticket.get("gt_priority_ok", []):
+        elif gt_p and pp in ticket.get("gt_priority_ok", []):
             score += 0.01
 
         pc = _safe_text(action.get("category")).strip().lower()
-        if pc == ticket.get("gt_category", ""):
+        gt_c = ticket.get("gt_category", "")
+        if gt_c and pc == gt_c:
             score += 0.02
-        elif pc in ticket.get("gt_category_ok", []):
+        elif gt_c and pc in ticket.get("gt_category_ok", []):
             score += 0.01
 
         pt = _safe_text(action.get("team")).strip().lower()
-        if pt == ticket.get("gt_team", ""):
+        gt_t = ticket.get("gt_team", "")
+        if gt_t and pt == gt_t:
             score += 0.03
-        elif pt in ticket.get("gt_team_ok", []):
+        elif gt_t and pt in ticket.get("gt_team_ok", []):
             score += 0.015
 
         # bonus for getting critical stuff out of the way first
-        if step <= 3 and ticket.get("gt_priority", "") == "critical":
+        if step <= 3 and gt_p == "critical":
             score += 0.01
-        if 4 <= step <= 6 and ticket.get("gt_priority", "") == "high":
+        if 4 <= step <= 6 and gt_p == "high":
             score += 0.005
 
         return _strict(score)
@@ -649,7 +666,7 @@ def grade_full_episode(
         result = {
             "total_score": _strict(total),
             "step_rewards": [_strict(float(r)) for r in rewards],
-            "num_steps": len(rewards),
+            "num_steps": str(len(rewards)),
             "avg_step_reward": _strict(total / len(rewards)) if rewards else _EPS,
         }
         if metadata:
@@ -658,7 +675,7 @@ def grade_full_episode(
             if "confidence_bonuses" in metadata:
                 result["total_confidence_bonus"] = _strict(sum(float(v) for v in metadata["confidence_bonuses"]))
             if "sla_breaches" in metadata:
-                result["sla_breaches"] = metadata["sla_breaches"]
+                result["sla_breaches"] = str(metadata["sla_breaches"])
             if "confidence_history" in metadata and "accuracy_history" in metadata:
                 result["ece"] = _strict(
                     compute_ece(list(metadata["confidence_history"]), list(metadata["accuracy_history"]))
@@ -668,6 +685,6 @@ def grade_full_episode(
         return {
             "total_score": _EPS,
             "step_rewards": [],
-            "num_steps": 0,
+            "num_steps": "0",
             "avg_step_reward": _EPS,
         }
