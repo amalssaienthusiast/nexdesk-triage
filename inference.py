@@ -356,7 +356,7 @@ def _task_defaults(task: str, step: int) -> Dict[str, Any]:
 def run_task(client: OpenAI, task: str) -> None:
     rewards: List[float] = []
     steps_taken = 0
-    score = 0.01
+    score = 0.05
     success = False
     session_id = ""
     error_msg = None
@@ -376,7 +376,7 @@ def run_task(client: OpenAI, task: str) -> None:
             try:
                 result = env_step(session_id, action)
                 obs = result["observation"]
-                reward = max(0.01, min(0.99, float(result["reward"])))
+                reward = max(0.05, min(0.95, float(result["reward"])))
                 done = bool(result["done"])
                 error_msg = None
             except requests.exceptions.HTTPError as e:
@@ -385,11 +385,11 @@ def run_task(client: OpenAI, task: str) -> None:
                     detail = e.response.json().get("detail", str(e))[:100]
                 except Exception:
                     detail = str(e)[:100]
-                reward = 0.01
+                reward = 0.05
                 done = True
                 error_msg = detail
             except Exception as e:
-                reward = 0.01
+                reward = 0.05
                 done = True
                 error_msg = str(e)[:100]
 
@@ -400,14 +400,14 @@ def run_task(client: OpenAI, task: str) -> None:
             if done:
                 break
 
-        score = max(0.01, min(0.99, sum(rewards) / max(len(rewards), 1)))
+        score = max(0.05, min(0.95, sum(rewards) / max(len(rewards), 1)))
         success = score >= SUCCESS_THRESHOLD
 
     except Exception as e:
         error_msg = str(e)[:100]
         if not rewards:
-            rewards = [0.01]
-            log_step(step=1, action="{}", reward=0.01, done=True, error=error_msg)
+            rewards = [0.05]
+            log_step(step=1, action="{}", reward=0.05, done=True, error=error_msg)
         steps_taken = steps_taken or 1
         success = False
 

@@ -36,11 +36,11 @@ class NexDeskAction(BaseModel):
         None, description="Professional first response to the user", min_length=1
     )
     resolution_steps: Optional[List[str]] = Field(None, description="List of resolution steps")
-    sla_hours: Optional[int] = Field(None, description="Estimated hours to resolve", ge=0, le=168)
+    sla_hours: Optional[int] = Field(None, description="Estimated hours to resolve", ge=1, le=168)
 
     # Innovation: Confidence calibration
     confidence: Optional[float] = Field(
-        None, description="Agent's confidence in this action (0.0-1.0)", ge=0.0, le=1.0
+        None, description="Agent's confidence in this action (0.0-1.0)", ge=0.01, le=0.99
     )
 
     # Innovation: Action type for multi-agent scenarios
