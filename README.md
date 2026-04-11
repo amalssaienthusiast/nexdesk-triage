@@ -1,10 +1,11 @@
 ---
 title: Nexdesk Ticket Triage
-emoji: 🚀
+emoji: 💻
 colorFrom: blue
 colorTo: green
 sdk: docker
 pinned: false
+license: mit
 ---
 
 # NexDesk — IT Ticket Triage OpenEnv Environment
