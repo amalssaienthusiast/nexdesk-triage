@@ -127,3 +127,6 @@ observation_schema:
       type: object
     batch_info:
       type: object
+reward_range:
+  min: 0.01
+  max: 0.99

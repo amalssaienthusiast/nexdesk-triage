@@ -46,7 +46,7 @@ class BusinessMetrics:
         total_reward: float,
         tickets_resolved: int = 1,
         sla_breaches: int = 0,
-        confidence_calibration: float = 0.0,
+        confidence_calibration: float = 0.01,
     ) -> None:
         # log the episode data
         record = EpisodeRecord(
@@ -88,7 +88,7 @@ class BusinessMetrics:
         breach_cost = total_sla_breaches * self.COST_PER_SLA_BREACH
 
         cost_savings = manual_cost - auto_cost - breach_cost
-        sla_compliance_rate = 1.0 - (total_sla_breaches / max(total_tickets, 1))
+        sla_compliance_rate = 0.99 - (total_sla_breaches / max(total_tickets, 1))
 
         # Automation success rate (based on reward threshold)
         success_threshold = 0.5
@@ -151,7 +151,7 @@ class BusinessMetrics:
 
         return {
             "monthly_ticket_volume": monthly_ticket_volume,
-            "automation_rate": round(automation_rate, 4),
+            "automation_rate": round(max(0.01, min(0.99, automation_rate)), 4),
             "tickets_automated": auto_tickets,
             "tickets_manual": manual_tickets,
             "monthly_costs": {
