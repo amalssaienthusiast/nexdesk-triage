@@ -295,16 +295,19 @@ class NexDeskEnv:
                 sla_penalty = 0.05 * sess["sla_breaches"]
                 reward = reward * (1.0 - min(sla_penalty, 0.3))
 
+            # ←←← FIXED CLAMPING (THIS WAS THE BUG) ←←←
             reward = _strict_clamp(reward)
 
-            # Absolute mathematical ceiling to prevent episodic sums from hitting 1.0
+            # Safer ceiling — guarantees we never reach 1.0
             steps_remaining = sess["max_steps"] - step
-            max_allowed_reward = 0.99 - sess["total_reward"] - (steps_remaining * _EPS)
+            max_allowed_reward = 0.98 - sess["total_reward"] - (steps_remaining * 0.02)
+            reward = _strict_clamp(max(_EPS, min(reward, max_allowed_reward)))
 
-            reward = float(round(max(_EPS, min(reward, max_allowed_reward)), 2))
-
+            # Final safety net on total_reward
             sess["total_reward"] += reward
+            sess["total_reward"] = _strict_clamp(sess["total_reward"])
             sess["rewards"].append(reward)
+            # ←←← END OF FIX ←←←
 
             # Get multi-dimensional score breakdown (advanced feature)
             try:
@@ -324,8 +327,6 @@ class NexDeskEnv:
             )
 
             # Crisis surge: advance to next ticket.
-            # accumulated is intentionally reset per-ticket so each ticket is scored
-            # independently — this is correct crisis-triage behaviour.
             if cfg.get("is_batch") and step < sess["max_steps"]:
                 sess["current_ticket_idx"] += 1
                 if sess["current_ticket_idx"] < len(sess["tickets"]):
@@ -502,12 +503,7 @@ class NexDeskEnv:
             return []
 
     def _build_knowledge_hints(self, ticket: Dict[str, Any]) -> Dict[str, List[str]]:
-        """Return per-category diagnostic leads and recommended checks.
-
-        common_causes is drawn from the authoritative _COMMON_CAUSES table rather
-        than from gt_keywords_resolution — resolution keywords describe *fixes*,
-        not *causes*, and the two are semantically distinct.
-        """
+        """Return per-category diagnostic leads and recommended checks."""
         category = ticket.get("gt_category", "other")
         recommended_checks: Dict[str, List[str]] = {
             "network": [
@@ -547,8 +543,7 @@ class NexDeskEnv:
         }
 
     def _start_cleanup_thread(self) -> None:
-        """Periodically purge expired sessions every 5 minutes so memory cannot grow
-        unboundedly even when no new episodes are started."""
+        """Periodically purge expired sessions."""
 
         def _loop() -> None:
             while True:
@@ -563,11 +558,7 @@ class NexDeskEnv:
         logger.info("Session GC thread started (interval=300s)")
 
     def _cleanup_expired_sessions(self) -> None:
-        """Purge sessions idle for longer than _session_timeout_seconds.
-
-        Uses the lock so concurrent resets/steps cannot observe a partially-cleared
-        session dict.
-        """
+        """Purge sessions idle for longer than _session_timeout_seconds."""
         current_time = time.time()
         with self._lock:
             expired = [
