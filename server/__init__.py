@@ -13,23 +13,22 @@ Components:
 from .environment import NexDeskEnv
 from .graders import (
     grade_classify,
-    grade_route_step1,
-    grade_route_step2,
+    grade_crisis,
+    grade_resolve,
     grade_resolve_step1,
     grade_resolve_step2,
     grade_resolve_step3,
     grade_route,
-    grade_resolve,
-    grade_crisis,
+    grade_route_step1,
+    grade_route_step2,
 )
-from .metrics import BusinessMetrics, get_global_metrics
+from .metrics import BusinessMetrics
 from .tickets import TICKETS
 
 __all__ = [
     "NexDeskEnv",
     "TICKETS",
     "BusinessMetrics",
-    "get_global_metrics",
     "grade_classify",
     "grade_route_step1",
     "grade_route_step2",

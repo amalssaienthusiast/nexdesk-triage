@@ -142,7 +142,7 @@ Returns:
 
 ## Ticket Dataset
 
-10 diverse tickets covering real scenarios:
+30 diverse tickets covering real scenarios:
 
 | ID | Scenario | Priority | Category |
 |----|----------|----------|----------|
@@ -156,6 +156,7 @@ Returns:
 | TKT-008 | Database queries extremely slow | high | software |
 | TKT-009 | New employee laptop setup | medium | hardware |
 | TKT-010 | VPN disconnects every 5 minutes | medium | network |
+| TKT-011–030 | Additional scenarios (software, access, security, hardware, network variants) | various | various |
 
 Each ticket includes:
 - Ground truth labels

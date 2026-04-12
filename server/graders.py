@@ -9,12 +9,12 @@ from collections import Counter
 from collections.abc import Mapping
 from typing import Any, Dict, List, Optional
 
-_EPS = 0.05
+_EPS = 0.01
 
 
 def _strict(score: float) -> float:
-    # never let it hit exactly 0.0 or 1.0 — validator gets weird about that
-    return float(round(max(_EPS, min(0.95, float(score))), 2))
+    # bounds: (0.01, 0.99) — validator requires strictly inside (0, 1)
+    return float(round(max(0.01, min(0.99, float(score))), 4))
 
 
 def _safe_text(value: Any) -> str:
@@ -43,21 +43,51 @@ def _as_dict(value: Any) -> Dict[str, Any]:
         if isinstance(dumped, dict):
             return dumped
     if hasattr(value, "__dict__"):
-        return {
-            k: v for k, v in vars(value).items()
-            if not k.startswith("_")
-        }
+        return {k: v for k, v in vars(value).items() if not k.startswith("_")}
     return {}
 
 
 # ── simple stemmer (didn't want to add nltk as a dependency) ──
 
 _SUFFIXES = [
-    "ational", "tional", "enci", "anci", "izer", "isation", "ization",
-    "ation", "ator", "alism", "iveness", "fulness", "ousness", "aliti",
-    "iviti", "biliti", "ment", "ness", "ence", "ance", "able", "ible",
-    "ting", "ing", "ied", "ies", "ive", "ful", "ous", "ism", "ist",
-    "ity", "ed", "er", "ly", "al", "es", "ic",
+    "ational",
+    "tional",
+    "enci",
+    "anci",
+    "izer",
+    "isation",
+    "ization",
+    "ation",
+    "ator",
+    "alism",
+    "iveness",
+    "fulness",
+    "ousness",
+    "aliti",
+    "iviti",
+    "biliti",
+    "ment",
+    "ness",
+    "ence",
+    "ance",
+    "able",
+    "ible",
+    "ting",
+    "ing",
+    "ied",
+    "ies",
+    "ive",
+    "ful",
+    "ous",
+    "ism",
+    "ist",
+    "ity",
+    "ed",
+    "er",
+    "ly",
+    "al",
+    "es",
+    "ic",
 ]
 
 
@@ -67,7 +97,7 @@ def _stem(word: str) -> str:
         return word
     for suffix in _SUFFIXES:
         if word.endswith(suffix) and len(word) - len(suffix) >= 3:
-            return word[:-len(suffix)]
+            return word[: -len(suffix)]
     return word
 
 
@@ -77,6 +107,7 @@ def _stem_phrase(phrase: str) -> str:
 
 
 # ── anti-keyword-stuffing ──
+
 
 def _detect_stuffing(text: str, keywords: List[str]) -> float:
     """
@@ -109,11 +140,12 @@ def _detect_stuffing(text: str, keywords: List[str]) -> float:
 
 # ── n-gram overlap (simplified BLEU) ──
 
+
 def _ngrams(text: str, n: int) -> Counter:
     words = [_stem(w) for w in re.findall(r"[a-z0-9]+", text.lower())]
     if len(words) < n:
         return Counter()
-    return Counter(tuple(words[i:i+n]) for i in range(len(words) - n + 1))
+    return Counter(tuple(words[i : i + n]) for i in range(len(words) - n + 1))
 
 
 def _ngram_overlap(hypothesis: str, references: List[str], max_n: int = 3) -> float:
@@ -140,22 +172,31 @@ def _ngram_overlap(hypothesis: str, references: List[str], max_n: int = 3) -> fl
 
     if count == 0:
         return _EPS
-    return max(_EPS, min(total / count, 0.95))
+    return max(0.01, min(total / count, 0.99))
 
 
 # ── response quality rubric ──
+
 
 def _score_empathy(text: str) -> float:
     if not text or len(text) < 15:
         return _EPS
     markers = [
-        "sorry", "apologize", "apologise", "understand", "frustrating",
-        "appreciate", "thank", "concern", "patience", "apologies",
+        "sorry",
+        "apologize",
+        "apologise",
+        "understand",
+        "frustrating",
+        "appreciate",
+        "thank",
+        "concern",
+        "patience",
+        "apologies",
     ]
     hits = sum(1 for m in markers if m in text.lower())
     if hits == 0:
         return 0.1
-    return min(hits / 3.0, 0.95)
+    return min(hits / 3.0, 0.99)
 
 
 def _score_clarity(text: str) -> float:
@@ -172,21 +213,34 @@ def _score_clarity(text: str) -> float:
     sentences = text.count(".") + text.count("!") + text.count("?")
     if sentences >= 2:
         score += 0.2
-    return min(score, 0.95)
+    return min(score, 0.99)
 
 
 def _score_actionability(text: str) -> float:
     if not text or len(text) < 15:
         return _EPS
     markers = [
-        "will", "going to", "let me", "i can", "we'll", "i'll",
-        "please", "try", "check", "restart", "verify", "ensure",
-        "contact", "reach out", "follow up", "update",
+        "will",
+        "going to",
+        "let me",
+        "i can",
+        "we'll",
+        "i'll",
+        "please",
+        "try",
+        "check",
+        "restart",
+        "verify",
+        "ensure",
+        "contact",
+        "reach out",
+        "follow up",
+        "update",
     ]
     hits = sum(1 for m in markers if m in text.lower())
     if hits == 0:
         return 0.1
-    return min(hits / 4.0, 0.95)
+    return min(hits / 4.0, 0.99)
 
 
 def _response_quality(text: str) -> float:
@@ -201,6 +255,7 @@ def _response_quality(text: str) -> float:
 
 
 # ── keyword scoring with stemming ──
+
 
 def _kw_score(text: str, keywords: List[str]) -> float:
     text = _safe_text(text)
@@ -218,10 +273,11 @@ def _kw_score(text: str, keywords: List[str]) -> float:
 
     raw = hits / max(len(keywords), 1)
     penalty = _detect_stuffing(text, keywords)
-    return max(_EPS, min(raw * penalty, 0.95))
+    return max(0.01, min(raw * penalty, 0.99))
 
 
 # ── sla scoring ──
+
 
 def _sla_score(predicted: Optional[int], expected: int) -> float:
     if predicted is None:
@@ -235,22 +291,23 @@ def _sla_score(predicted: Optional[int], expected: int) -> float:
         return 0.5
     ratio = predicted / expected
     if 0.8 <= ratio <= 1.2:
-        return 0.95
+        return 0.99
     if 0.5 <= ratio <= 2.0:
         return 0.7
     if 0.25 <= ratio <= 4.0:
         return 0.4
-    return 0.05
+    return 0.01
 
 
 # ── basic field scoring ──
+
 
 def _priority_score(predicted: str, ground_truth: str, acceptable: List[str]) -> float:
     pred = _safe_text(predicted).strip().lower()
     if not ground_truth:
         return _EPS
     if pred == ground_truth:
-        return 0.95
+        return 0.99
     if pred in acceptable:
         return 0.5
     return _EPS
@@ -261,7 +318,7 @@ def _category_score(predicted: str, ground_truth: str, acceptable: List[str]) ->
     if not ground_truth:
         return _EPS
     if pred == ground_truth:
-        return 0.95
+        return 0.99
     if pred in acceptable:
         return 0.5
     return _EPS
@@ -272,13 +329,14 @@ def _team_score(predicted: str, ground_truth: str, acceptable: List[str]) -> flo
     if not ground_truth:
         return _EPS
     if pred == ground_truth:
-        return 0.95
+        return 0.99
     if pred in acceptable:
         return 0.5
     return _EPS
 
 
 # ── time and confidence (the interesting stuff) ──
+
 
 def _compute_time_penalty(elapsed_minutes: float, sla_deadline: int, stress_level: float) -> float:
     """
@@ -330,7 +388,9 @@ def _compute_confidence_bonus(confidence: float, accuracy: float) -> float:
     return _EPS
 
 
-def compute_ece(confidence_history: List[float], accuracy_history: List[float], n_bins: int = 5) -> float:
+def compute_ece(
+    confidence_history: List[float], accuracy_history: List[float], n_bins: int = 5
+) -> float:
     """expected calibration error — lower is better"""
     if not confidence_history or len(confidence_history) != len(accuracy_history):
         return 0.5
@@ -342,7 +402,8 @@ def compute_ece(confidence_history: List[float], accuracy_history: List[float], 
     for i in range(n_bins):
         lo, hi = bins[i], bins[i + 1]
         indices = [
-            j for j, c in enumerate(confidence_history)
+            j
+            for j, c in enumerate(confidence_history)
             if lo <= c < hi or (i == n_bins - 1 and c == hi)
         ]
         if not indices:
@@ -352,10 +413,11 @@ def compute_ece(confidence_history: List[float], accuracy_history: List[float], 
         avg_acc = sum(accuracy_history[j] for j in indices) / bsize
         ece += (bsize / total) * abs(avg_conf - avg_acc)
 
-    return max(0.05, min(0.95, ece))
+    return max(0.01, min(0.99, ece))
 
 
 # ── score breakdown for the info dict ──
+
 
 def get_score_breakdown(
     task: str, step: int, action: Dict[str, Any], ticket: Dict[str, Any]
@@ -366,21 +428,27 @@ def get_score_breakdown(
 
     pp = _safe_text(action.get("priority")).strip().lower()
     if pp:
-        bd["priority"] = round(_priority_score(pp, ticket.get("gt_priority", ""), ticket.get("gt_priority_ok", [])), 4)
+        bd["priority"] = round(
+            _priority_score(pp, ticket.get("gt_priority", ""), ticket.get("gt_priority_ok", [])), 4
+        )
 
     pc = _safe_text(action.get("category")).strip().lower()
     if pc:
-        bd["category"] = round(_category_score(pc, ticket.get("gt_category", ""), ticket.get("gt_category_ok", [])), 4)
+        bd["category"] = round(
+            _category_score(pc, ticket.get("gt_category", ""), ticket.get("gt_category_ok", [])), 4
+        )
 
     pt = _safe_text(action.get("team")).strip().lower()
     if pt:
-        bd["team"] = round(_team_score(pt, ticket.get("gt_team", ""), ticket.get("gt_team_ok", [])), 4)
+        bd["team"] = round(
+            _team_score(pt, ticket.get("gt_team", ""), ticket.get("gt_team_ok", [])), 4
+        )
 
     ps = _safe_text(action.get("affected_system")).strip().lower()
     gt_s = ticket.get("gt_affected_system", "").lower()
     if ps:
         if gt_s and (gt_s in ps or ps in gt_s):
-            bd["affected_system"] = 0.95
+            bd["affected_system"] = 0.99
         else:
             bd["affected_system"] = 0.15
 
@@ -405,6 +473,7 @@ def get_score_breakdown(
 
 
 # ── task 1: classify ──
+
 
 def grade_classify(action: Dict[str, Any], ticket: Dict[str, Any]) -> float:
     try:
@@ -432,6 +501,7 @@ def grade_classify(action: Dict[str, Any], ticket: Dict[str, Any]) -> float:
 
 
 # ── task 2: route ──
+
 
 def grade_route_step1(action: Dict[str, Any], ticket: Dict[str, Any]) -> float:
     try:
@@ -482,6 +552,7 @@ def grade_route_step2(action: Dict[str, Any], ticket: Dict[str, Any]) -> float:
 
 # ── task 3: resolve ──
 
+
 def grade_resolve_step1(action: Dict[str, Any], ticket: Dict[str, Any]) -> float:
     try:
         action = _as_dict(action)
@@ -531,7 +602,7 @@ def grade_resolve_step2(action: Dict[str, Any], ticket: Dict[str, Any]) -> float
         if len(resp) > 10:
             kw = _kw_score(resp, ticket.get("gt_keywords_response", []))
             rq = _response_quality(resp)
-            score += 0.20 * min(0.5 * kw + 0.5 * rq, 0.95)
+            score += 0.20 * min(0.5 * kw + 0.5 * rq, 0.99)
 
         return _strict(score)
     except Exception:
@@ -550,7 +621,7 @@ def grade_resolve_step3(action: Dict[str, Any], ticket: Dict[str, Any]) -> float
             kw = _kw_score(combined, ticket.get("gt_keywords_resolution", []))
             ng = _ngram_overlap(combined, ticket.get("gt_keywords_resolution", []))
             combined_score = 0.6 * kw + 0.4 * ng
-            score += 0.15 * min(combined_score * 1.5, 0.95)
+            score += 0.15 * min(combined_score * 1.5, 0.99)
         elif len(steps) == 1:
             score += 0.05
 
@@ -564,6 +635,7 @@ def grade_resolve_step3(action: Dict[str, Any], ticket: Dict[str, Any]) -> float
 
 # ── task 4: crisis ──
 
+
 def grade_crisis_ticket(action: Dict[str, Any], ticket: Dict[str, Any], step: int) -> float:
     try:
         action = _as_dict(action)
@@ -573,29 +645,29 @@ def grade_crisis_ticket(action: Dict[str, Any], ticket: Dict[str, Any], step: in
         pp = _safe_text(action.get("priority")).strip().lower()
         gt_p = ticket.get("gt_priority", "")
         if gt_p and pp == gt_p:
-            score += 0.02
+            score += 0.04  # exact match
         elif gt_p and pp in ticket.get("gt_priority_ok", []):
-            score += 0.05
+            score += 0.02  # acceptable alternative
 
         pc = _safe_text(action.get("category")).strip().lower()
         gt_c = ticket.get("gt_category", "")
         if gt_c and pc == gt_c:
-            score += 0.02
+            score += 0.03  # exact match
         elif gt_c and pc in ticket.get("gt_category_ok", []):
-            score += 0.05
+            score += 0.01  # acceptable alternative
 
         pt = _safe_text(action.get("team")).strip().lower()
         gt_t = ticket.get("gt_team", "")
         if gt_t and pt == gt_t:
-            score += 0.03
+            score += 0.04  # exact match
         elif gt_t and pt in ticket.get("gt_team_ok", []):
-            score += 0.05
+            score += 0.02  # acceptable alternative
 
-        # bonus for getting critical stuff out of the way first
+        # bonus for handling critical tickets in first 3 steps (crisis priority)
         if step <= 3 and gt_p == "critical":
-            score += 0.05
+            score += 0.02
         if 4 <= step <= 6 and gt_p == "high":
-            score += 0.005
+            score += 0.01
 
         return _strict(score)
     except Exception:
@@ -606,24 +678,30 @@ def grade_route(action: Dict[str, Any], ticket: Dict[str, Any]) -> float:
     """
     Single-call compatibility grader for the route task.
 
-    This mirrors the environment's 2-step task by combining the route step
-    and affected-system step into one deterministic score.
+    Combines the 2-step task into one deterministic score. Denominators are
+    the empirical maximums of each step grader:
+      step1 max = 0.01 + 0.25 + 0.25 + 0.30 = 0.81
+      step2 max = 0.15  (exact affected_system match)
     """
     try:
         action = _as_dict(action)
         ticket = _as_dict(ticket)
         step1 = grade_route_step1(action, ticket)
         step2 = grade_route_step2(action, ticket)
-        return _strict(0.84 * step1 + 0.16 * (step2 / 0.99))
+        return _strict(0.84 * (step1 / 0.81) + 0.16 * (step2 / 0.15))
     except Exception:
         return _EPS
+
 
 def grade_resolve(action: Dict[str, Any], ticket: Dict[str, Any]) -> float:
     """
     Single-call compatibility grader for the resolve task.
 
-    This combines the three environment steps into one deterministic score
-    using the same rough weighting as the step-level rewards.
+    Combines the three environment steps into one deterministic score.
+    Denominators are the empirical maximums of each step grader:
+      step1 max = 0.41  (priority 0.12 + category 0.13 + team 0.15 + base 0.01)
+      step2 max = 0.31  (affected_system 0.10 + response_quality 0.20 + base 0.01)
+      step3 max = 0.26  (resolution_steps 0.15 + sla 0.10 + base 0.01)
     """
     try:
         action = _as_dict(action)
@@ -631,13 +709,10 @@ def grade_resolve(action: Dict[str, Any], ticket: Dict[str, Any]) -> float:
         step1 = grade_resolve_step1(action, ticket)
         step2 = grade_resolve_step2(action, ticket)
         step3 = grade_resolve_step3(action, ticket)
-        return _strict(
-            0.42 * (step1 / 0.40) +
-            0.32 * (step2 / 0.30) +
-            0.26 * (step3 / 0.25)
-        )
+        return _strict(0.42 * (step1 / 0.41) + 0.32 * (step2 / 0.31) + 0.26 * (step3 / 0.26))
     except Exception:
         return _EPS
+
 
 def grade_crisis(action: Dict[str, Any], ticket: Dict[str, Any]) -> float:
     """
@@ -656,6 +731,7 @@ def grade_crisis(action: Dict[str, Any], ticket: Dict[str, Any]) -> float:
 
 # ── episode rollup ──
 
+
 def grade_full_episode(
     task: str, rewards: List[float], metadata: Optional[Dict] = None
 ) -> Dict[str, Any]:
@@ -666,25 +742,31 @@ def grade_full_episode(
         result = {
             "total_score": _strict(total),
             "step_rewards": [_strict(float(r)) for r in rewards],
-            "num_steps": str(len(rewards)),
+            "num_steps": len(rewards),
             "avg_step_reward": _strict(total / len(rewards)) if rewards else _EPS,
         }
         if metadata:
             if "time_penalties" in metadata:
-                result["total_time_penalty"] = _strict(sum(float(v) for v in metadata["time_penalties"]))
+                result["total_time_penalty"] = _strict(
+                    sum(float(v) for v in metadata["time_penalties"])
+                )
             if "confidence_bonuses" in metadata:
-                result["total_confidence_bonus"] = _strict(sum(float(v) for v in metadata["confidence_bonuses"]))
+                result["total_confidence_bonus"] = _strict(
+                    sum(float(v) for v in metadata["confidence_bonuses"])
+                )
             if "sla_breaches" in metadata:
-                result["sla_breaches"] = str(metadata["sla_breaches"])
+                result["sla_breaches"] = int(metadata["sla_breaches"])
             if "confidence_history" in metadata and "accuracy_history" in metadata:
                 result["ece"] = _strict(
-                    compute_ece(list(metadata["confidence_history"]), list(metadata["accuracy_history"]))
+                    compute_ece(
+                        list(metadata["confidence_history"]), list(metadata["accuracy_history"])
+                    )
                 )
         return result
     except Exception:
         return {
             "total_score": _EPS,
             "step_rewards": [],
-            "num_steps": "0",
+            "num_steps": 0,
             "avg_step_reward": _EPS,
         }

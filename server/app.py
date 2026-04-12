@@ -20,13 +20,12 @@ logger = logging.getLogger(__name__)
 app = FastAPI(
     title="NexDesk — IT Ticket Triage OpenEnv",
     description="OpenEnv environment for training AI agents on IT helpdesk ticket triage.",
-    version="1.1.0",
+    version="2.0.0",
 )
 
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 env = NexDeskEnv()
-
 
 
 @app.exception_handler(RequestValidationError)
@@ -73,21 +72,23 @@ class StepRequest(BaseModel):
     priority: Optional[Literal["low", "medium", "high", "critical"]] = Field(
         None, description="low, medium, high, critical"
     )
-    category: Optional[Literal["network", "hardware", "software", "access", "security", "other"]] = Field(
-        None, description="network, hardware, software, access, security, other"
-    )
+    category: Optional[
+        Literal["network", "hardware", "software", "access", "security", "other"]
+    ] = Field(None, description="network, hardware, software, access, security, other")
     team: Optional[Literal["helpdesk", "network-ops", "sysadmin", "security", "dev"]] = Field(
         None, description="helpdesk, network-ops, sysadmin, security, dev"
     )
-    affected_system: Optional[str] = Field(None, description="Primary affected system", min_length=1)
+    affected_system: Optional[str] = Field(
+        None, description="Primary affected system", min_length=1
+    )
     first_response: Optional[str] = Field(None, description="First response to user", min_length=1)
     resolution_steps: Optional[List[str]] = Field(None, description="List of resolution steps")
     sla_hours: Optional[int] = Field(None, description="Estimated hours to resolve", ge=1, le=168)
     confidence: Optional[float] = Field(
         None, description="Agent's confidence (0.0-1.0)", ge=0.01, le=0.99
     )
-    action_type: Optional[Literal["classify", "respond", "resolve", "delegate", "escalate"]] = Field(
-        None, description="classify, respond, resolve, delegate, escalate"
+    action_type: Optional[Literal["classify", "respond", "resolve", "delegate", "escalate"]] = (
+        Field(None, description="classify, respond, resolve, delegate, escalate")
     )
     reasoning: Optional[str] = Field(None, description="Optional reasoning", min_length=1)
 
@@ -97,7 +98,7 @@ def health() -> Dict[str, Any]:
     return {
         "status": "healthy",
         "env": "nexdesk-ticket-triage",
-        "version": "1.1.0",
+        "version": "2.0.0",
         "features": [
             "time_pressure",
             "confidence_calibration",
@@ -233,7 +234,7 @@ def get_roi(monthly_volume: int = 1000) -> Dict[str, Any]:
 def root() -> Dict[str, Any]:
     return {
         "name": "NexDesk IT Ticket Triage",
-        "version": "1.1.0",
+        "version": "2.0.0",
         "description": "OpenEnv environment for training AI agents on IT helpdesk tasks",
         "endpoints": {
             "/health": "GET",

@@ -3,6 +3,7 @@ venv/
 .venv/
 env/
 .env/
+my_env/
 
 # Python cache
 __pycache__/
@@ -28,6 +29,16 @@ Thumbs.db
 
 # Logs
 *.log
+
+# HuggingFace sync artifacts
+hf_sync_temp/
+hf_space_sync/
+
+# Lock files (not needed in HF Space)
+uv.lock
+
+# VS Code workspace files
+*.code-workspace
 
 # Testing
 .pytest_cache/

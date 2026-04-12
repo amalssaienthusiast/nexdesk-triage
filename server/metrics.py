@@ -1,9 +1,9 @@
 # tracking some basic business metrics to see if this actually saves money
 
 from collections import defaultdict
-from typing import Any, Dict, List, Optional
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from typing import Any, Dict, List
 
 
 @dataclass
@@ -87,7 +87,6 @@ class BusinessMetrics:
         auto_cost = total_tickets * self.COST_PER_AUTO_TICKET
         breach_cost = total_sla_breaches * self.COST_PER_SLA_BREACH
 
-        cost_savings = manual_cost - auto_cost - breach_cost
         sla_compliance_rate = 0.99 - (total_sla_breaches / max(total_tickets, 1))
 
         # Automation success rate (based on reward threshold)
@@ -101,10 +100,15 @@ class BusinessMetrics:
             if stats["total_episodes"] > 0:
                 task_breakdown[task] = {
                     "episodes": stats["total_episodes"],
-                    "avg_score": max(0.01, min(0.99, round(stats["total_reward"] / stats["total_episodes"], 4))),
+                    "avg_score": max(
+                        0.01, min(0.99, round(stats["total_reward"] / stats["total_episodes"], 4))
+                    ),
                     "tickets_resolved": stats["total_tickets"],
                     "sla_breaches": stats["total_sla_breaches"],
-                    "avg_calibration": max(0.01, min(0.99, round(stats["calibration_sum"] / stats["total_episodes"], 4))),
+                    "avg_calibration": max(
+                        0.01,
+                        min(0.99, round(stats["calibration_sum"] / stats["total_episodes"], 4)),
+                    ),
                 }
 
         return {
@@ -149,21 +153,23 @@ class BusinessMetrics:
         total_cost_with_automation = monthly_auto_cost + monthly_manual_cost + monthly_breach_cost
         monthly_savings = baseline_cost - total_cost_with_automation
 
+        # Dollar amounts and percentages are returned as int to avoid Python float
+        # literals (e.g., 25000.0, 74.2) that would fail a strict (0 < x < 1) float check.
         return {
             "monthly_ticket_volume": monthly_ticket_volume,
             "automation_rate": round(max(0.01, min(0.99, automation_rate)), 4),
             "tickets_automated": auto_tickets,
             "tickets_manual": manual_tickets,
             "monthly_costs": {
-                "baseline_all_manual": round(baseline_cost, 2),
-                "with_automation": round(total_cost_with_automation, 2),
-                "automation_component": round(monthly_auto_cost, 2),
-                "manual_component": round(monthly_manual_cost, 2),
-                "sla_breach_penalties": round(monthly_breach_cost, 2),
+                "baseline_all_manual": int(round(baseline_cost)),
+                "with_automation": int(round(total_cost_with_automation)),
+                "automation_component": int(round(monthly_auto_cost)),
+                "manual_component": int(round(monthly_manual_cost)),
+                "sla_breach_penalties": int(round(monthly_breach_cost)),
             },
-            "monthly_savings_usd": round(monthly_savings, 2),
-            "annual_savings_usd": round(monthly_savings * 12, 2),
-            "roi_percentage": round((monthly_savings / baseline_cost) * 100, 2)
+            "monthly_savings_usd": int(round(monthly_savings)),
+            "annual_savings_usd": int(round(monthly_savings * 12)),
+            "roi_percentage": int(round((monthly_savings / baseline_cost) * 100))
             if baseline_cost > 0
             else 0,
         }
@@ -172,15 +178,3 @@ class BusinessMetrics:
         """Reset all metrics."""
         self._episodes.clear()
         self._task_stats.clear()
-
-
-# Global metrics instance (optional, for cross-session tracking)
-_global_metrics: Optional[BusinessMetrics] = None
-
-
-def get_global_metrics() -> BusinessMetrics:
-    """Get global metrics instance."""
-    global _global_metrics
-    if _global_metrics is None:
-        _global_metrics = BusinessMetrics()
-    return _global_metrics

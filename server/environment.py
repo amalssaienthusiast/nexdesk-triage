@@ -3,33 +3,34 @@
 
 import logging
 import random
+import threading
 import time
 import uuid
 from typing import Any, Dict, List, Optional
 
 from .graders import (
-    grade_classify,
-    grade_route_step1,
-    grade_route_step2,
-    grade_resolve_step1,
-    grade_resolve_step2,
-    grade_resolve_step3,
-    grade_crisis_ticket,
     _compute_confidence_bonus,
     _compute_time_penalty,
     get_score_breakdown,
+    grade_classify,
+    grade_crisis_ticket,
+    grade_resolve_step1,
+    grade_resolve_step2,
+    grade_resolve_step3,
+    grade_route_step1,
+    grade_route_step2,
 )
-from .tickets import TICKETS
 from .metrics import BusinessMetrics
+from .tickets import TICKETS
 
 logger = logging.getLogger(__name__)
 
-_EPS = 0.05
+_EPS = 0.01
 
 
 def _strict_clamp(score: float) -> float:
-    # strict bounding so the evaluator doesn't crash on us
-    return float(round(max(_EPS, min(0.95, float(score))), 2))
+    # bounds: (0.01, 0.99) — validator requires strictly inside (0, 1)
+    return float(round(max(0.01, min(0.99, float(score))), 4))
 
 
 # basically the difficulty settings for the different tasks
@@ -40,7 +41,7 @@ TASK_CONFIGS = {
         "required_fields": ["priority", "category"],
         "difficulty": "easy",
         "base_sla_minutes": 60,
-        "max_reward_per_step": {1: 0.95},
+        "max_reward_per_step": {1: 0.99},
     },
     "ticket_route": {
         "max_steps": 2,
@@ -48,7 +49,7 @@ TASK_CONFIGS = {
         "required_fields": ["priority", "category", "team", "affected_system"],
         "difficulty": "medium",
         "base_sla_minutes": 30,
-        "max_reward_per_step": {1: 0.80, 2: 0.15},
+        "max_reward_per_step": {1: 0.81, 2: 0.15},
     },
     "ticket_resolve": {
         "max_steps": 3,
@@ -64,7 +65,7 @@ TASK_CONFIGS = {
         ],
         "difficulty": "hard",
         "base_sla_minutes": 20,
-        "max_reward_per_step": {1: 0.40, 2: 0.30, 3: 0.25},
+        "max_reward_per_step": {1: 0.41, 2: 0.31, 3: 0.26},
     },
     "crisis_surge": {
         "max_steps": 10,
@@ -73,7 +74,7 @@ TASK_CONFIGS = {
         "difficulty": "hard",
         "base_sla_minutes": 5,
         "is_batch": True,
-        "max_reward_per_step": {i: 0.09 for i in range(1, 11)},
+        "max_reward_per_step": {i: 0.14 for i in range(1, 11)},
     },
 }
 
@@ -103,13 +104,57 @@ ORG_CONTEXT = {
 }
 
 
+# Per-category common causes — used to populate knowledge hints with semantically
+# meaningful diagnostic leads rather than raw resolution keywords.
+_COMMON_CAUSES: Dict[str, List[str]] = {
+    "network": [
+        "DNS misconfiguration or stale cache",
+        "DHCP lease expiry or IP address conflict",
+        "VPN tunnel instability or firewall rule block",
+        "Network adapter driver issue or hardware fault",
+    ],
+    "hardware": [
+        "Power supply, cabling, or port fault",
+        "Driver incompatibility or firmware mismatch",
+        "Peripheral disconnect or USB hub failure",
+        "Physical damage or end-of-life hardware failure",
+    ],
+    "software": [
+        "Missing or incompatible dependency / library",
+        "Corrupt installation, registry, or profile entry",
+        "Insufficient memory or disk space",
+        "Permission policy blocking application execution",
+    ],
+    "access": [
+        "Expired, locked, or disabled credentials",
+        "MFA token out-of-sync or authenticator app issue",
+        "AD group membership not yet propagated",
+        "Password policy or conditional-access enforcement",
+    ],
+    "security": [
+        "Phishing link or credential compromise",
+        "Unpatched CVE exploited by threat actor",
+        "Malware, ransomware, or lateral movement",
+        "Misconfigured IAM role or ACL",
+    ],
+    "other": [
+        "Symptoms unclear — detailed triage required",
+        "Multiple subsystems potentially affected",
+        "Recent change may have introduced regression",
+        "Escalation to specialist team may be warranted",
+    ],
+}
+
+
 class NexDeskEnv:
     # the main openenv driver
 
     def __init__(self):
         self._sessions: Dict[str, Dict[str, Any]] = {}
+        self._lock = threading.RLock()
         self._metrics = BusinessMetrics()
         self._session_timeout_seconds = 3600
+        self._start_cleanup_thread()
         logger.info("started nexdesk env")
 
     def reset(self, task: Optional[str] = None) -> Dict[str, Any]:
@@ -118,7 +163,9 @@ class NexDeskEnv:
 
         task = (task or "ticket_classify").strip().lower()
         if task not in TASK_CONFIGS:
-            raise ValueError(f"Unknown task: '{task}'. Choose from: {', '.join(TASK_CONFIGS.keys())}")
+            raise ValueError(
+                f"Unknown task: '{task}'. Choose from: {', '.join(TASK_CONFIGS.keys())}"
+            )
 
         cfg = TASK_CONFIGS[task]
 
@@ -127,14 +174,16 @@ class NexDeskEnv:
             num_tickets = min(cfg["max_steps"], len(TICKETS))
             tickets = random.sample(TICKETS, k=num_tickets)
             priority_order = {"critical": 0, "high": 1, "medium": 2, "low": 3}
-            tickets = sorted(tickets, key=lambda t: priority_order.get(t.get("gt_priority", "medium"), 2))
+            tickets = sorted(
+                tickets, key=lambda t: priority_order.get(t.get("gt_priority", "medium"), 2)
+            )
             current_ticket = tickets[0]
         else:
             tickets = [random.choice(TICKETS)]
             current_ticket = tickets[0]
 
         queue_depth = random.randint(5, 25)
-        stress_level = min(queue_depth / 30.0, 0.95)
+        stress_level = max(0.01, min(queue_depth / 30.0, 0.99))
 
         # Adjust SLA based on priority
         base_sla = cfg.get("base_sla_minutes", 60)
@@ -145,7 +194,7 @@ class NexDeskEnv:
             base_sla = max(1, int(base_sla * 0.75))
 
         session_id = str(uuid.uuid4())
-        self._sessions[session_id] = {
+        session_data: Dict[str, Any] = {
             "session_id": session_id,
             "task": task,
             "tickets": tickets,
@@ -154,7 +203,7 @@ class NexDeskEnv:
             "step": 0,
             "max_steps": cfg["max_steps"],
             "done": False,
-            "total_reward": 0.05,
+            "total_reward": 0.01,
             "rewards": [],
             "accumulated": {},
             "start_time": time.time(),
@@ -168,6 +217,8 @@ class NexDeskEnv:
             "escalations": 0,
             "sla_breaches": 0,
         }
+        with self._lock:
+            self._sessions[session_id] = session_data
 
         logger.info(f"Reset: task={task}, session_id={session_id}")
         return {"observation": self._build_observation(session_id, _EPS), "session_id": session_id}
@@ -176,158 +227,167 @@ class NexDeskEnv:
         # step logic. tracks time limits and runs graders.
         if not session_id or not isinstance(session_id, str):
             raise ValueError("session_id is required")
-        if session_id not in self._sessions:
-            raise ValueError(f"Unknown session_id: '{session_id}'. Call reset() first.")
 
-        sess = self._sessions[session_id]
-        if sess["done"]:
-            raise ValueError("Episode already done. Call reset() to start a new one.")
+        with self._lock:
+            if session_id not in self._sessions:
+                raise ValueError(f"Unknown session_id: '{session_id}'. Call reset() first.")
 
-        sess["last_activity"] = time.time()
-        sess["step"] += 1
-        step = sess["step"]
-        task = sess["task"]
-        ticket = sess["ticket"]
-        cfg = TASK_CONFIGS[task]
+            sess = self._sessions[session_id]
+            if sess["done"]:
+                raise ValueError("Episode already done. Call reset() to start a new one.")
 
-        # Merge action into accumulated state
-        if action and isinstance(action, dict):
-            for k, v in action.items():
-                if v is not None:
-                    sess["accumulated"][k] = v
-        merged = sess["accumulated"]
+            sess["last_activity"] = time.time()
+            sess["step"] += 1
+            step = sess["step"]
+            task = sess["task"]
+            ticket = sess["ticket"]
+            cfg = TASK_CONFIGS[task]
 
-        # Compute base reward
-        try:
-            base_reward = self._compute_reward(task, step, merged, ticket)
-        except Exception as e:
-            logger.error(f"Reward computation error: {e}")
-            base_reward = _EPS
+            # Merge action into accumulated state
+            if action and isinstance(action, dict):
+                for k, v in action.items():
+                    if v is not None:
+                        sess["accumulated"][k] = v
+            merged = sess["accumulated"]
 
-        # Apply time penalty (advanced feature)
-        elapsed_minutes = (time.time() - sess["start_time"]) / 60.0
-        try:
-            time_penalty = _compute_time_penalty(
-                elapsed_minutes, sess["sla_deadline_minutes"], sess["stress_level"]
-            )
-        except Exception as e:
-            logger.error(f"Time penalty error: {e}")
-            time_penalty = _EPS
-
-        # Apply confidence calibration bonus/penalty (advanced feature)
-        confidence = action.get("confidence") if action else None
-        confidence_bonus = _EPS
-        normalized_accuracy = _EPS
-
-        if confidence is not None and isinstance(confidence, (int, float)):
+            # Compute base reward
             try:
-                max_reward_for_step = cfg.get("max_reward_per_step", {}).get(step, 1.0)
-                normalized_accuracy = base_reward / max_reward_for_step if max_reward_for_step > 0 else 0.0
-                confidence_bonus = _compute_confidence_bonus(confidence, normalized_accuracy)
-                sess["confidence_history"].append(_strict_clamp(float(confidence)))
-                sess["accuracy_history"].append(_strict_clamp(normalized_accuracy))
+                base_reward = self._compute_reward(task, step, merged, ticket)
             except Exception as e:
-                logger.error(f"Confidence bonus error: {e}")
-                confidence_bonus = _EPS
+                logger.error(f"Reward computation error: {e}")
+                base_reward = _EPS
 
-        # Final reward calculation with penalties and bonuses
-        reward = base_reward * (1.0 - time_penalty) + confidence_bonus
-
-        # Track SLA breaches
-        sla_penalty = _EPS
-        if elapsed_minutes > sess["sla_deadline_minutes"]:
-            sess["sla_breaches"] += 1
-            sla_penalty = 0.05 * sess["sla_breaches"]
-            reward = reward * (1.0 - min(sla_penalty, 0.3))
-
-        reward = _strict_clamp(reward)
-
-        # Absolute mathematical ceiling to prevent episodic sums from hitting 1.0
-        steps_remaining = sess["max_steps"] - step
-        max_allowed_reward = 0.95 - sess["total_reward"] - (steps_remaining * _EPS)
-        
-        reward = float(round(max(_EPS, min(reward, max_allowed_reward)), 2))
-
-        sess["total_reward"] += reward
-        sess["rewards"].append(reward)
-
-        # Get multi-dimensional score breakdown (advanced feature)
-        try:
-            score_breakdown = get_score_breakdown(task, step, merged, ticket)
-        except Exception as e:
-            logger.error(f"Score breakdown error: {e}")
-            score_breakdown = {}
-
-        score_breakdown.update({
-            "time_penalty": max(_EPS, min(0.95, round(time_penalty, 4))),
-            "confidence_bonus": max(_EPS, min(0.95, round(confidence_bonus, 4))),
-            "base_reward": max(_EPS, min(0.95, round(base_reward, 4))),
-            "sla_penalty": max(_EPS, min(0.95, round(sla_penalty, 4))),
-            "sla_breaches": sess["sla_breaches"],
-        })
-
-        # Crisis surge: advance to next ticket
-        if cfg.get("is_batch") and step < sess["max_steps"]:
-            sess["current_ticket_idx"] += 1
-            if sess["current_ticket_idx"] < len(sess["tickets"]):
-                sess["ticket"] = sess["tickets"][sess["current_ticket_idx"]]
-                sess["accumulated"] = {}
-                sess["stress_level"] = max(_EPS, sess["stress_level"] - 0.08)
-                sess["queue_depth"] = max(0, sess["queue_depth"] - 1)
-                # Random new ticket arrival (30% chance)
-                if random.random() < 0.3:
-                    sess["queue_depth"] += 1
-                    sess["stress_level"] = min(0.95, sess["stress_level"] + 0.05)
-            sess["tickets_resolved"] += 1
-
-        done = step >= sess["max_steps"]
-        sess["done"] = done
-
-        if done:
+            # Apply time penalty (advanced feature)
+            elapsed_minutes = (time.time() - sess["start_time"]) / 60.0
             try:
-                self._metrics.record_episode(
-                    task=task,
-                    total_reward=sess["total_reward"],
-                    tickets_resolved=sess.get("tickets_resolved", 1),
-                    sla_breaches=sess["sla_breaches"],
-                    confidence_calibration=self._compute_calibration(sess),
+                time_penalty = _compute_time_penalty(
+                    elapsed_minutes, sess["sla_deadline_minutes"], sess["stress_level"]
                 )
             except Exception as e:
-                logger.error(f"Metrics recording error: {e}")
+                logger.error(f"Time penalty error: {e}")
+                time_penalty = _EPS
 
-        return {
-            "observation": self._build_observation(session_id, reward),
-            "reward": round(reward, 4),
-            "done": done,
-            "info": {
-                "step": step,
-                "total_reward": round(max(_EPS, min(0.95, sess["total_reward"])), 4),
-                "task": task,
-                "score_breakdown": score_breakdown,
-                "time_penalty": max(_EPS, min(0.95, round(time_penalty, 4))),
-                "confidence_bonus": max(_EPS, min(0.95, round(confidence_bonus, 4))),
-                "sla_penalty": max(_EPS, min(0.95, round(sla_penalty, 4))),
-            },
-        }
+            # Apply confidence calibration bonus/penalty (advanced feature)
+            confidence = action.get("confidence") if action else None
+            confidence_bonus = _EPS
+            normalized_accuracy = _EPS
+
+            if confidence is not None and isinstance(confidence, (int, float)):
+                try:
+                    max_reward_for_step = cfg.get("max_reward_per_step", {}).get(step, 1.0)
+                    normalized_accuracy = (
+                        base_reward / max_reward_for_step if max_reward_for_step > 0 else 0.0
+                    )
+                    confidence_bonus = _compute_confidence_bonus(confidence, normalized_accuracy)
+                    sess["confidence_history"].append(_strict_clamp(float(confidence)))
+                    sess["accuracy_history"].append(_strict_clamp(normalized_accuracy))
+                except Exception as e:
+                    logger.error(f"Confidence bonus error: {e}")
+                    confidence_bonus = _EPS
+
+            # Final reward calculation with penalties and bonuses
+            reward = base_reward * (1.0 - time_penalty) + confidence_bonus
+
+            # Track SLA breaches
+            sla_penalty = _EPS
+            if elapsed_minutes > sess["sla_deadline_minutes"]:
+                sess["sla_breaches"] += 1
+                sla_penalty = 0.05 * sess["sla_breaches"]
+                reward = reward * (1.0 - min(sla_penalty, 0.3))
+
+            reward = _strict_clamp(reward)
+
+            # Absolute mathematical ceiling to prevent episodic sums from hitting 1.0
+            steps_remaining = sess["max_steps"] - step
+            max_allowed_reward = 0.99 - sess["total_reward"] - (steps_remaining * _EPS)
+
+            reward = float(round(max(_EPS, min(reward, max_allowed_reward)), 2))
+
+            sess["total_reward"] += reward
+            sess["rewards"].append(reward)
+
+            # Get multi-dimensional score breakdown (advanced feature)
+            try:
+                score_breakdown = get_score_breakdown(task, step, merged, ticket)
+            except Exception as e:
+                logger.error(f"Score breakdown error: {e}")
+                score_breakdown = {}
+
+            score_breakdown.update(
+                {
+                    "time_penalty": max(0.01, min(0.99, round(time_penalty, 4))),
+                    "confidence_bonus": max(0.01, min(0.99, round(confidence_bonus, 4))),
+                    "base_reward": max(0.01, min(0.99, round(base_reward, 4))),
+                    "sla_penalty": max(0.01, min(0.99, round(sla_penalty, 4))),
+                    "sla_breaches": sess["sla_breaches"],
+                }
+            )
+
+            # Crisis surge: advance to next ticket.
+            # accumulated is intentionally reset per-ticket so each ticket is scored
+            # independently — this is correct crisis-triage behaviour.
+            if cfg.get("is_batch") and step < sess["max_steps"]:
+                sess["current_ticket_idx"] += 1
+                if sess["current_ticket_idx"] < len(sess["tickets"]):
+                    sess["ticket"] = sess["tickets"][sess["current_ticket_idx"]]
+                    sess["accumulated"] = {}
+                    sess["stress_level"] = max(0.01, sess["stress_level"] - 0.08)
+                    sess["queue_depth"] = max(0, sess["queue_depth"] - 1)
+                    # Random new ticket arrival (30% chance)
+                    if random.random() < 0.3:
+                        sess["queue_depth"] += 1
+                        sess["stress_level"] = min(0.99, sess["stress_level"] + 0.05)
+                sess["tickets_resolved"] += 1
+
+            done = step >= sess["max_steps"]
+            sess["done"] = done
+
+            if done:
+                try:
+                    self._metrics.record_episode(
+                        task=task,
+                        total_reward=sess["total_reward"],
+                        tickets_resolved=sess.get("tickets_resolved", 1),
+                        sla_breaches=sess["sla_breaches"],
+                        confidence_calibration=self._compute_calibration(sess),
+                    )
+                except Exception as e:
+                    logger.error(f"Metrics recording error: {e}")
+
+            return {
+                "observation": self._build_observation(session_id, reward),
+                "reward": round(reward, 4),
+                "done": done,
+                "info": {
+                    "step": step,
+                    "total_reward": round(max(0.01, min(0.99, sess["total_reward"])), 4),
+                    "task": task,
+                    "score_breakdown": score_breakdown,
+                    "time_penalty": max(0.01, min(0.99, round(time_penalty, 4))),
+                    "confidence_bonus": max(0.01, min(0.99, round(confidence_bonus, 4))),
+                    "sla_penalty": max(0.01, min(0.99, round(sla_penalty, 4))),
+                },
+            }
 
     def state(self, session_id: str) -> Dict[str, Any]:
         # get state variables for testing
-        if not session_id or session_id not in self._sessions:
-            raise ValueError(f"Unknown session_id: '{session_id}'")
-        sess = self._sessions[session_id]
-        return {
-            "session_id": session_id,
-            "task": sess["task"],
-            "step": sess["step"],
-            "max_steps": sess["max_steps"],
-            "done": sess["done"],
-            "total_reward": round(max(_EPS, min(0.95, sess["total_reward"])), 4),
-            "ticket_id": sess["ticket"]["id"],
-            "sla_breaches": sess.get("sla_breaches", 0),
-            "stress_level": round(sess.get("stress_level", _EPS), 2),
-            "confidence_history": sess.get("confidence_history", []),
-            "accuracy_history": sess.get("accuracy_history", []),
-        }
+        with self._lock:
+            if not session_id or session_id not in self._sessions:
+                raise ValueError(f"Unknown session_id: '{session_id}'")
+            sess = self._sessions[session_id]
+            return {
+                "session_id": session_id,
+                "task": sess["task"],
+                "step": sess["step"],
+                "max_steps": sess["max_steps"],
+                "done": sess["done"],
+                "total_reward": round(max(0.01, min(0.99, sess["total_reward"])), 4),
+                "ticket_id": sess["ticket"]["id"],
+                "sla_breaches": sess.get("sla_breaches", 0),
+                "stress_level": round(max(0.01, min(0.99, sess.get("stress_level", 0.01))), 4),
+                "confidence_history": list(sess.get("confidence_history", [])),
+                "accuracy_history": list(sess.get("accuracy_history", [])),
+            }
 
     def get_metrics(self) -> Dict[str, Any]:
         return self._metrics.get_summary()
@@ -367,7 +427,7 @@ class NexDeskEnv:
             return 0.5  # neutral default
         try:
             mae = sum(abs(c - a) for c, a in zip(conf_hist, acc_hist)) / len(conf_hist)
-            return max(0.05, min(0.95, 1.0 - mae))
+            return max(0.01, min(0.99, 1.0 - mae))
         except Exception:
             return 0.5
 
@@ -442,29 +502,79 @@ class NexDeskEnv:
             return []
 
     def _build_knowledge_hints(self, ticket: Dict[str, Any]) -> Dict[str, List[str]]:
-        """Provide lightweight troubleshooting hints derived from the ticket metadata."""
+        """Return per-category diagnostic leads and recommended checks.
+
+        common_causes is drawn from the authoritative _COMMON_CAUSES table rather
+        than from gt_keywords_resolution — resolution keywords describe *fixes*,
+        not *causes*, and the two are semantically distinct.
+        """
         category = ticket.get("gt_category", "other")
-        hints = {
-            "network": ["Check connectivity scope", "Review router/switch status", "Inspect VPN or DHCP logs"],
-            "hardware": ["Verify power and cabling", "Check device health LEDs", "Confirm replacement inventory"],
-            "software": ["Review recent updates", "Inspect application logs", "Test with a known-good profile"],
-            "access": ["Verify identity and group membership", "Check MFA/auth provider status", "Review recent permission changes"],
-            "security": ["Preserve logs", "Contain affected accounts or hosts", "Escalate to incident response if impact is broad"],
-            "other": ["Clarify symptoms", "Confirm affected users and systems", "Gather recent changes"],
+        recommended_checks: Dict[str, List[str]] = {
+            "network": [
+                "Check connectivity scope (single host vs. subnet)",
+                "Review router/switch status and port LEDs",
+                "Inspect VPN tunnel logs and DHCP lease table",
+            ],
+            "hardware": [
+                "Verify power supply and cabling integrity",
+                "Check device health LEDs and event log",
+                "Confirm spare/replacement inventory availability",
+            ],
+            "software": [
+                "Review recent OS or application updates",
+                "Inspect application error logs and crash dumps",
+                "Test with a clean/known-good user profile",
+            ],
+            "access": [
+                "Verify identity provider status and group membership",
+                "Check MFA / authenticator app sync status",
+                "Review recent permission or role changes in IAM",
+            ],
+            "security": [
+                "Preserve all relevant logs before any remediation",
+                "Contain affected accounts or hosts immediately",
+                "Escalate to incident response if blast radius is unclear",
+            ],
+            "other": [
+                "Clarify exact symptoms and reproduction steps",
+                "Confirm scope: affected users, systems, and departments",
+                "Gather recent change log entries",
+            ],
         }
         return {
-            "common_causes": ticket.get("gt_keywords_resolution", [])[:4],
-            "recommended_checks": hints.get(category, hints["other"]),
+            "common_causes": _COMMON_CAUSES.get(category, _COMMON_CAUSES["other"]),
+            "recommended_checks": recommended_checks.get(category, recommended_checks["other"]),
         }
 
+    def _start_cleanup_thread(self) -> None:
+        """Periodically purge expired sessions every 5 minutes so memory cannot grow
+        unboundedly even when no new episodes are started."""
+
+        def _loop() -> None:
+            while True:
+                time.sleep(300)
+                try:
+                    self._cleanup_expired_sessions()
+                except Exception as e:
+                    logger.warning(f"Background cleanup error: {e}")
+
+        t = threading.Thread(target=_loop, daemon=True, name="nexdesk-session-gc")
+        t.start()
+        logger.info("Session GC thread started (interval=300s)")
+
     def _cleanup_expired_sessions(self) -> None:
-        # clear out old sessions so memory doesn't explode
+        """Purge sessions idle for longer than _session_timeout_seconds.
+
+        Uses the lock so concurrent resets/steps cannot observe a partially-cleared
+        session dict.
+        """
         current_time = time.time()
-        expired = [
-            sid
-            for sid, sess in self._sessions.items()
-            if current_time - sess.get("last_activity", 0) > self._session_timeout_seconds
-        ]
-        for sid in expired:
-            del self._sessions[sid]
-            logger.info(f"Cleaned up expired session: {sid}")
+        with self._lock:
+            expired = [
+                sid
+                for sid, sess in self._sessions.items()
+                if current_time - sess.get("last_activity", 0) > self._session_timeout_seconds
+            ]
+            for sid in expired:
+                del self._sessions[sid]
+                logger.info(f"Cleaned up expired session: {sid}")

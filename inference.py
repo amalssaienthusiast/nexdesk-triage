@@ -14,9 +14,11 @@ from openai import OpenAI
 
 API_BASE_URL = os.getenv("API_BASE_URL", "https://router.huggingface.co/v1")
 MODEL_NAME = os.getenv("MODEL_NAME", "Qwen/Qwen2.5-72B-Instruct")
-HF_TOKEN = os.getenv("HF_TOKEN")
-if HF_TOKEN is None:
-    raise ValueError("HF_TOKEN environment variable is required")
+HF_TOKEN = os.getenv("HF_TOKEN") or os.getenv("OPENAI_API_KEY")
+if not HF_TOKEN:
+    raise ValueError(
+        "Authentication token is required. Set HF_TOKEN or OPENAI_API_KEY environment variable."
+    )
 
 ENV_BASE_URL = os.getenv("ENV_BASE_URL", "http://localhost:7860").rstrip("/")
 
@@ -24,7 +26,15 @@ BENCHMARK = "nexdesk-ticket-triage"
 MAX_RETRIES = 2
 TEMPERATURE = 0.15
 MAX_TOKENS = 768
-SUCCESS_THRESHOLD = 0.5
+# Per-task success thresholds reflect the fact that multi-step tasks accumulate
+# rewards across more steps, and the environment's ceiling formula distributes
+# budget across all steps. A single global threshold is meaningless here.
+SUCCESS_THRESHOLDS: Dict[str, float] = {
+    "ticket_classify": 0.55,  # 1 step; ceiling ~0.90
+    "ticket_route": 0.45,  # 2 steps; ceiling budget spread thinner
+    "ticket_resolve": 0.38,  # 3 steps; quality scoring makes full marks hard
+    "crisis_surge": 0.32,  # 10 steps under time pressure
+}
 
 TASKS = ["ticket_classify", "ticket_route", "ticket_resolve", "crisis_surge"]
 
@@ -79,7 +89,7 @@ Subject: VPN disconnects every 5 minutes
 Description: Working from home, VPN keeps dropping. Using OpenVPN on Windows 10.
 Submitter: Jane (Legal)
 Correct answer: {"priority": "medium", "category": "network"}
-""", 
+""",
     "ticket_route_step1": """
 Example ticket:
 Subject: PRODUCTION SERVER DOWN
@@ -121,13 +131,13 @@ Correct answer: {"priority": "critical", "category": "network", "team": "network
 
 SYSTEM_PROMPT = textwrap.dedent("""
     You are an expert IT helpdesk triage agent. Analyze the support ticket carefully.
-    
+
     Think step by step:
     1. What is the core issue?
     2. How many people are affected?
     3. Is there a business deadline or revenue impact?
     4. Which team is best equipped to handle this?
-    
+
     Then respond with a JSON object containing ONLY the fields specified.
     Return ONLY valid JSON. No markdown fences, no explanation outside the JSON.
 """).strip()
@@ -255,6 +265,7 @@ def build_prompt(obs: Dict[str, Any], step: int) -> str:
 
 # ── llm call with retry ──
 
+
 def get_action(client: OpenAI, obs: Dict[str, Any], step: int) -> Dict[str, Any]:
     prompt = build_prompt(obs, step)
 
@@ -278,7 +289,7 @@ def get_action(client: OpenAI, obs: Dict[str, Any], step: int) -> Dict[str, Any]
             start = raw.find("{")
             end = raw.rfind("}")
             if start != -1 and end != -1 and end > start:
-                raw = raw[start:end + 1]
+                raw = raw[start : end + 1]
 
             action = json.loads(raw)
 
@@ -307,11 +318,22 @@ def get_action(client: OpenAI, obs: Dict[str, Any], step: int) -> Dict[str, Any]
                 elif step == 2:
                     if not action.get("affected_system"):
                         action["affected_system"] = "unknown"
-                    if not action.get("first_response") or len(action.get("first_response", "")) < 10:
-                        action["first_response"] = f"Thank you for reporting this issue. We are looking into it and will update you shortly."
+                    if (
+                        not action.get("first_response")
+                        or len(action.get("first_response", "")) < 10
+                    ):
+                        action["first_response"] = (
+                            "Thank you for reporting this issue. We are looking into it and will update you shortly."
+                        )
                 elif step == 3:
-                    if not action.get("resolution_steps") or not isinstance(action["resolution_steps"], list):
-                        action["resolution_steps"] = ["Investigate the reported issue", "Apply appropriate fix", "Verify resolution"]
+                    if not action.get("resolution_steps") or not isinstance(
+                        action["resolution_steps"], list
+                    ):
+                        action["resolution_steps"] = [
+                            "Investigate the reported issue",
+                            "Apply appropriate fix",
+                            "Verify resolution",
+                        ]
                     sla = action.get("sla_hours")
                     if not isinstance(sla, (int, float)) or sla <= 0:
                         action["sla_hours"] = 8
@@ -345,7 +367,11 @@ def _task_defaults(task: str, step: int) -> Dict[str, Any]:
             }
         if step == 3:
             return {
-                "resolution_steps": ["Investigate the reported issue", "Apply fix", "Verify with user"],
+                "resolution_steps": [
+                    "Investigate the reported issue",
+                    "Apply fix",
+                    "Verify with user",
+                ],
                 "sla_hours": 8,
             }
     return {"priority": "medium", "category": "other"}
@@ -353,10 +379,11 @@ def _task_defaults(task: str, step: int) -> Dict[str, Any]:
 
 # ── main loop ──
 
+
 def run_task(client: OpenAI, task: str) -> None:
     rewards: List[float] = []
     steps_taken = 0
-    score = 0.05
+    score = 0.01
     success = False
     session_id = ""
     error_msg = None
@@ -376,7 +403,7 @@ def run_task(client: OpenAI, task: str) -> None:
             try:
                 result = env_step(session_id, action)
                 obs = result["observation"]
-                reward = max(0.05, min(0.95, float(result["reward"])))
+                reward = max(0.01, min(0.99, float(result["reward"])))
                 done = bool(result["done"])
                 error_msg = None
             except requests.exceptions.HTTPError as e:
@@ -385,11 +412,11 @@ def run_task(client: OpenAI, task: str) -> None:
                     detail = e.response.json().get("detail", str(e))[:100]
                 except Exception:
                     detail = str(e)[:100]
-                reward = 0.05
+                reward = 0.01
                 done = True
                 error_msg = detail
             except Exception as e:
-                reward = 0.05
+                reward = 0.01
                 done = True
                 error_msg = str(e)[:100]
 
@@ -400,14 +427,15 @@ def run_task(client: OpenAI, task: str) -> None:
             if done:
                 break
 
-        score = max(0.05, min(0.95, sum(rewards) / max(len(rewards), 1)))
-        success = score >= SUCCESS_THRESHOLD
+        score = max(0.01, min(0.99, sum(rewards) / max(len(rewards), 1)))
+        threshold = SUCCESS_THRESHOLDS.get(task, 0.45)
+        success = score >= threshold
 
     except Exception as e:
         error_msg = str(e)[:100]
         if not rewards:
-            rewards = [0.05]
-            log_step(step=1, action="{}", reward=0.05, done=True, error=error_msg)
+            rewards = [0.01]
+            log_step(step=1, action="{}", reward=0.01, done=True, error=error_msg)
         steps_taken = steps_taken or 1
         success = False
 

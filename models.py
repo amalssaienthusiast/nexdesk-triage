@@ -17,7 +17,9 @@ class NexDeskAction(BaseModel):
     priority: Optional[Literal["low", "medium", "high", "critical"]] = Field(
         None, description="Ticket priority: low, medium, high, critical"
     )
-    category: Optional[Literal["network", "hardware", "software", "access", "security", "other"]] = Field(
+    category: Optional[
+        Literal["network", "hardware", "software", "access", "security", "other"]
+    ] = Field(
         None,
         description="Ticket category: network, hardware, software, access, security, other",
     )
@@ -44,10 +46,12 @@ class NexDeskAction(BaseModel):
     )
 
     # Innovation: Action type for multi-agent scenarios
-    action_type: Optional[Literal["classify", "respond", "resolve", "delegate", "escalate"]] = Field(
-        None, description="Action type: classify, respond, resolve, delegate, escalate"
+    action_type: Optional[Literal["classify", "respond", "resolve", "delegate", "escalate"]] = (
+        Field(None, description="Action type: classify, respond, resolve, delegate, escalate")
     )
-    reasoning: Optional[str] = Field(None, description="Optional reasoning for the action", min_length=1)
+    reasoning: Optional[str] = Field(
+        None, description="Optional reasoning for the action", min_length=1
+    )
 
 
 class NexDeskObservation(BaseModel):
@@ -65,12 +69,12 @@ class NexDeskObservation(BaseModel):
     task: str
     step: int
     max_steps: int
-    last_reward: float
+    last_reward: float = Field(..., ge=0.0, le=1.0)
     session_id: str
     message: str
 
     done: bool = Field(default=False)
-    reward: Optional[float] = Field(default=None)
+    reward: Optional[float] = Field(default=None, ge=0.0, le=1.0)
 
     # Innovation: Time pressure fields
     sla_deadline_minutes: Optional[int] = Field(
@@ -78,7 +82,7 @@ class NexDeskObservation(BaseModel):
     )
     queue_depth: Optional[int] = Field(None, description="Number of pending tickets in queue")
     stress_level: Optional[float] = Field(
-        None, description="Current stress level 0.0-1.0 based on load"
+        None, ge=0.0, le=1.0, description="Current stress level 0.0-1.0 based on load"
     )
 
     # Innovation: Organizational context
@@ -106,10 +110,10 @@ class NexDeskState(BaseModel):
     step: int
     max_steps: int
     done: bool
-    total_reward: float
+    total_reward: float = Field(..., ge=0.0, le=1.0)
     ticket_id: str
     sla_breaches: Optional[int] = Field(default=None)
-    stress_level: Optional[float] = Field(default=None)
+    stress_level: Optional[float] = Field(None, ge=0.0, le=1.0)
 
     # Innovation: Performance tracking
     confidence_history: Optional[List[float]] = Field(
@@ -122,23 +126,27 @@ class NexDeskInfo(BaseModel):
     """Additional info returned with step results."""
 
     step: int
-    total_reward: float
+    total_reward: float = Field(..., ge=0.0, le=1.0)
     task: str
 
     # Innovation: Multi-dimensional scores
     score_breakdown: Optional[dict] = Field(None, description="Breakdown of scores by dimension")
-    time_penalty: Optional[float] = Field(None, description="Penalty applied due to time pressure")
-    confidence_bonus: Optional[float] = Field(
-        None, description="Bonus/penalty for confidence calibration"
+    time_penalty: Optional[float] = Field(
+        None, ge=0.0, le=1.0, description="Penalty applied due to time pressure"
     )
-    sla_penalty: Optional[float] = Field(None, description="Penalty applied after SLA breach")
+    confidence_bonus: Optional[float] = Field(
+        None, ge=-1.0, le=1.0, description="Bonus/penalty for confidence calibration"
+    )
+    sla_penalty: Optional[float] = Field(
+        None, ge=0.0, le=1.0, description="Penalty applied after SLA breach"
+    )
 
 
 class StepResult(BaseModel):
     """Complete result from an environment step."""
 
     observation: NexDeskObservation
-    reward: float
+    reward: float = Field(..., ge=0.01, le=0.99, description="Step reward strictly in (0.01, 0.99)")
     done: bool
     info: NexDeskInfo
 
