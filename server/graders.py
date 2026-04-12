@@ -291,7 +291,7 @@ def _sla_score(predicted: Optional[int], expected: int) -> float:
         return 0.5
     ratio = predicted / expected
     if 0.8 <= ratio <= 1.2:
-        return 0.99
+        return 0.98
     if 0.5 <= ratio <= 2.0:
         return 0.7
     if 0.25 <= ratio <= 4.0:
@@ -307,7 +307,7 @@ def _priority_score(predicted: str, ground_truth: str, acceptable: List[str]) ->
     if not ground_truth:
         return _EPS
     if pred == ground_truth:
-        return 0.99
+        return 0.98
     if pred in acceptable:
         return 0.5
     return _EPS
@@ -318,7 +318,7 @@ def _category_score(predicted: str, ground_truth: str, acceptable: List[str]) ->
     if not ground_truth:
         return _EPS
     if pred == ground_truth:
-        return 0.99
+        return 0.98
     if pred in acceptable:
         return 0.5
     return _EPS
@@ -329,7 +329,7 @@ def _team_score(predicted: str, ground_truth: str, acceptable: List[str]) -> flo
     if not ground_truth:
         return _EPS
     if pred == ground_truth:
-        return 0.99
+        return 0.98
     if pred in acceptable:
         return 0.5
     return _EPS
@@ -429,26 +429,26 @@ def get_score_breakdown(
     pp = _safe_text(action.get("priority")).strip().lower()
     if pp:
         bd["priority"] = round(
-            _priority_score(pp, ticket.get("gt_priority", ""), ticket.get("gt_priority_ok", [])), 4
+            _strict(_priority_score(pp, ticket.get("gt_priority", ""), ticket.get("gt_priority_ok", []))), 4
         )
 
     pc = _safe_text(action.get("category")).strip().lower()
     if pc:
         bd["category"] = round(
-            _category_score(pc, ticket.get("gt_category", ""), ticket.get("gt_category_ok", [])), 4
+            _strict(_category_score(pc, ticket.get("gt_category", ""), ticket.get("gt_category_ok", []))), 4
         )
 
     pt = _safe_text(action.get("team")).strip().lower()
     if pt:
         bd["team"] = round(
-            _team_score(pt, ticket.get("gt_team", ""), ticket.get("gt_team_ok", [])), 4
+            _strict(_team_score(pt, ticket.get("gt_team", ""), ticket.get("gt_team_ok", []))), 4
         )
 
     ps = _safe_text(action.get("affected_system")).strip().lower()
     gt_s = ticket.get("gt_affected_system", "").lower()
     if ps:
         if gt_s and (gt_s in ps or ps in gt_s):
-            bd["affected_system"] = 0.99
+            bd["affected_system"] = 0.98
         else:
             bd["affected_system"] = 0.15
 
@@ -456,18 +456,18 @@ def get_score_breakdown(
     if resp and len(resp) > 10:
         kw = _kw_score(resp, ticket.get("gt_keywords_response", []))
         rq = _response_quality(resp)
-        bd["response_quality"] = round(0.5 * kw + 0.5 * rq, 4)
+        bd["response_quality"] = round(_strict(0.5 * kw + 0.5 * rq), 4)
 
     steps_list = _safe_text_list(action.get("resolution_steps"))
     if steps_list:
         combined = " ".join(str(s) for s in steps_list)
         kw = _kw_score(combined, ticket.get("gt_keywords_resolution", []))
         ng = _ngram_overlap(combined, ticket.get("gt_keywords_resolution", []))
-        bd["resolution_quality"] = round(0.6 * kw + 0.4 * ng, 4)
+        bd["resolution_quality"] = round(_strict(0.6 * kw + 0.4 * ng), 4)
 
     sla = action.get("sla_hours")
     if sla is not None:
-        bd["sla_accuracy"] = round(_sla_score(sla, ticket.get("gt_sla_hours", 8)), 4)
+        bd["sla_accuracy"] = round(_strict(_sla_score(sla, ticket.get("gt_sla_hours", 8))), 4)
 
     return bd
 
