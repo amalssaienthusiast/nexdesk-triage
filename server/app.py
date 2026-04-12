@@ -248,6 +248,89 @@ def root() -> Dict[str, Any]:
     }
 
 
+@app.get("/metadata")
+def metadata() -> Dict[str, Any]:
+    """Required by openenv-core validator: GET /metadata returns name and description."""
+    return {
+        "name": "NexDesk IT Ticket Triage",
+        "description": "OpenEnv environment for training AI agents on real-world IT helpdesk ticket triage with time pressure, confidence calibration, and crisis surge scenarios.",
+        "version": "2.0.0",
+        "author": "amalscicoder",
+    }
+
+
+@app.get("/schema")
+def schema() -> Dict[str, Any]:
+    """Required by openenv-core validator: GET /schema returns action, observation, and state schemas."""
+    return {
+        "action": {
+            "type": "object",
+            "required": ["session_id"],
+            "properties": {
+                "session_id": {"type": "string", "description": "Session ID from reset"},
+                "priority": {"type": "string", "enum": ["low", "medium", "high", "critical"]},
+                "category": {
+                    "type": "string",
+                    "enum": ["network", "hardware", "software", "access", "security", "other"],
+                },
+                "team": {
+                    "type": "string",
+                    "enum": ["helpdesk", "network-ops", "sysadmin", "security", "dev"],
+                },
+                "affected_system": {"type": "string"},
+                "first_response": {"type": "string"},
+                "resolution_steps": {"type": "array", "items": {"type": "string"}},
+                "sla_hours": {"type": "integer", "minimum": 1, "maximum": 168},
+                "confidence": {"type": "number", "minimum": 0.01, "maximum": 0.99},
+                "action_type": {
+                    "type": "string",
+                    "enum": ["classify", "respond", "resolve", "delegate", "escalate"],
+                },
+                "reasoning": {"type": "string"},
+            },
+        },
+        "observation": {
+            "type": "object",
+            "properties": {
+                "ticket_id": {"type": "string"},
+                "subject": {"type": "string"},
+                "description": {"type": "string"},
+                "submitter": {"type": "string"},
+                "department": {"type": "string"},
+                "submitted_at": {"type": "string"},
+                "task": {"type": "string"},
+                "step": {"type": "integer"},
+                "max_steps": {"type": "integer"},
+                "last_reward": {"type": "number"},
+                "session_id": {"type": "string"},
+                "message": {"type": "string"},
+                "sla_deadline_minutes": {"type": "integer"},
+                "queue_depth": {"type": "integer"},
+                "stress_level": {"type": "number"},
+                "org_context": {"type": "object"},
+                "similar_tickets": {"type": "array"},
+                "knowledge_hints": {"type": "object"},
+            },
+        },
+        "state": {
+            "type": "object",
+            "properties": {
+                "session_id": {"type": "string"},
+                "task": {"type": "string"},
+                "step": {"type": "integer"},
+                "max_steps": {"type": "integer"},
+                "done": {"type": "boolean"},
+                "total_reward": {"type": "number"},
+                "ticket_id": {"type": "string"},
+                "sla_breaches": {"type": "integer"},
+                "stress_level": {"type": "number"},
+                "confidence_history": {"type": "array"},
+                "accuracy_history": {"type": "array"},
+            },
+        },
+    }
+
+
 @app.get("/schema/action")
 def action_schema() -> Dict[str, Any]:
     return {

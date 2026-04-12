@@ -12,31 +12,31 @@ tags:
   - routing
   - nlp
   - real-world
-repository: "https://github.com/amalssaienthusiast/nexdesk-ticket-triage"
+repository: "https://github.com/amalssaienthusiast/nexdesk-triage"
 tasks:
   - id: ticket_classify
     description: "Classify a support ticket's priority and category"
     difficulty: easy
     max_steps: 1
-    reward_range: [0.01, 0.99]
+    reward_range: [0.0, 1.0]
     grader: grade_classify
   - id: ticket_route
     description: "Classify and route a ticket to the correct team, identify affected system"
     difficulty: medium
     max_steps: 2
-    reward_range: [0.01, 0.99]
+    reward_range: [0.0, 1.0]
     grader: grade_route
   - id: ticket_resolve
     description: "Full resolution pipeline — classify, respond to user, provide resolution steps"
     difficulty: hard
     max_steps: 3
-    reward_range: [0.01, 0.99]
+    reward_range: [0.0, 1.0]
     grader: grade_resolve
   - id: crisis_surge
     description: "Handle a surge of 10 tickets during a production outage under time pressure"
     difficulty: hard
     max_steps: 10
-    reward_range: [0.01, 0.99]
+    reward_range: [0.0, 1.0]
     grader: grade_crisis
 action_schema:
   type: object
@@ -127,4 +127,4 @@ observation_schema:
       type: object
     batch_info:
       type: object
-reward_range: [0.01, 0.99]
+reward_range: [0.0, 1.0]
