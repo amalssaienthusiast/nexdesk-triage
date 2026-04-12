@@ -1,0 +1,66 @@
+# Virtual environments — never copy into Docker image
+venv/
+.venv/
+env/
+my_env/
+
+# Python bytecode cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Distribution / packaging artifacts
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# IDE and editor files
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS artefacts
+.DS_Store
+Thumbs.db
+
+# Git — not needed inside the container
+.git/
+.gitignore
+.gitattributes
+
+# HF sync scaffolding (already deleted, but keep as safety net)
+hf_space_sync/
+hf_sync_temp/
+
+# Lock files — pip handles deps; uv.lock not used inside container
+uv.lock
+
+# VS Code workspace
+*.code-workspace
+
+# Log files
+*.log
+server.log
+
+# Dev / audit scripts — not needed at runtime
+deep_audit.py
+validate_ranges.py
+validate_deployment.py
+DEPLOYMENT_CHECKLIST.md
+SETUP.md
+
+# Test cache
+tests/__pycache__/
+
+# Session scratch files
+session-*.md
+
+# Jupyter notebooks (if any)
+*.ipynb
+.ipynb_checkpoints/
