@@ -1,5 +1,5 @@
-# nexdesk engine - ULTRA-SAFE VERSION (Phase 2 validated)
-# All rewards and total_reward guaranteed strictly in (0.01, 0.97]
+# nexdesk engine - ULTIMATE SAFE VERSION (Phase 2 guaranteed)
+# All rewards and total_reward strictly in (0.01, 0.95]
 
 import logging
 import random
@@ -26,59 +26,23 @@ from .tickets import TICKETS
 logger = logging.getLogger(__name__)
 
 _EPS = 0.01
-_MAX_SAFE = 0.97   # ←←← MAXIMUM ALLOWED (very safe)
+_MAX_SAFE = 0.95   # ←←← VERY CONSERVATIVE MAXIMUM
 
 def _strict_clamp(score: float) -> float:
-    """Guaranteed strictly between 0.01 and 0.97"""
+    """Guaranteed strictly between 0.01 and 0.95"""
     return float(round(max(0.01, min(_MAX_SAFE, float(score))), 4))
 
-# Task configurations
 TASK_CONFIGS = {
-    "ticket_classify": {
-        "max_steps": 1,
-        "description": "Classify ticket priority and category.",
-        "required_fields": ["priority", "category"],
-        "difficulty": "easy",
-        "base_sla_minutes": 60,
-        "max_reward_per_step": {1: 0.97},
-    },
-    "ticket_route": {
-        "max_steps": 2,
-        "description": "Step 1: Classify and route to team. Step 2: Identify affected system.",
-        "required_fields": ["priority", "category", "team", "affected_system"],
-        "difficulty": "medium",
-        "base_sla_minutes": 30,
-        "max_reward_per_step": {1: 0.81, 2: 0.15},
-    },
-    "ticket_resolve": {
-        "max_steps": 3,
-        "description": "Step 1: Classify and assign. Step 2: Respond to user. Step 3: Resolution steps and SLA.",
-        "required_fields": ["priority", "category", "team", "affected_system", "first_response", "resolution_steps", "sla_hours"],
-        "difficulty": "hard",
-        "base_sla_minutes": 20,
-        "max_reward_per_step": {1: 0.41, 2: 0.31, 3: 0.26},
-    },
-    "crisis_surge": {
-        "max_steps": 10,
-        "description": "CRISIS MODE: Triage 10 tickets under time pressure.",
-        "required_fields": ["priority", "category", "team"],
-        "difficulty": "hard",
-        "base_sla_minutes": 5,
-        "is_batch": True,
-        "max_reward_per_step": {i: 0.14 for i in range(1, 11)},
-    },
+    "ticket_classify": {"max_steps": 1, "description": "Classify ticket priority and category.", "required_fields": ["priority", "category"], "difficulty": "easy", "base_sla_minutes": 60, "max_reward_per_step": {1: 0.95}},
+    "ticket_route": {"max_steps": 2, "description": "Step 1: Classify and route. Step 2: Affected system.", "required_fields": ["priority", "category", "team", "affected_system"], "difficulty": "medium", "base_sla_minutes": 30, "max_reward_per_step": {1: 0.80, 2: 0.14}},
+    "ticket_resolve": {"max_steps": 3, "description": "Full resolution pipeline.", "required_fields": ["priority","category","team","affected_system","first_response","resolution_steps","sla_hours"], "difficulty": "hard", "base_sla_minutes": 20, "max_reward_per_step": {1: 0.40, 2: 0.30, 3: 0.25}},
+    "crisis_surge": {"max_steps": 10, "description": "CRISIS MODE: Triage 10 tickets.", "required_fields": ["priority", "category", "team"], "difficulty": "hard", "base_sla_minutes": 5, "is_batch": True, "max_reward_per_step": {i: 0.13 for i in range(1, 11)}},
 }
 
 ORG_CONTEXT = {
     "total_employees": 500,
-    "departments": ["Engineering", "Sales", "Marketing", "Finance", "HR", "Legal", "Operations", "Design", "IT Security"],
-    "teams": {
-        "helpdesk": {"capacity": 10, "avg_response_time": "2h"},
-        "network-ops": {"capacity": 4, "avg_response_time": "4h"},
-        "sysadmin": {"capacity": 6, "avg_response_time": "3h"},
-        "security": {"capacity": 3, "avg_response_time": "1h"},
-        "dev": {"capacity": 8, "avg_response_time": "6h"},
-    },
+    "departments": ["Engineering","Sales","Marketing","Finance","HR","Legal","Operations","Design","IT Security"],
+    "teams": {"helpdesk": {"capacity": 10, "avg_response_time": "2h"}, "network-ops": {"capacity": 4, "avg_response_time": "4h"}, "sysadmin": {"capacity": 6, "avg_response_time": "3h"}, "security": {"capacity": 3, "avg_response_time": "1h"}, "dev": {"capacity": 8, "avg_response_time": "6h"}},
     "current_oncall": "network-ops",
     "recent_incidents": ["database-slowness", "vpn-issues"],
 }
@@ -99,7 +63,7 @@ class NexDeskEnv:
         self._metrics = BusinessMetrics()
         self._session_timeout_seconds = 3600
         self._start_cleanup_thread()
-        logger.info("NexDesk environment started (ultra-safe mode)")
+        logger.info("NexDesk environment started (ULTIMATE SAFE MODE)")
 
     def reset(self, task: Optional[str] = None) -> Dict[str, Any]:
         self._cleanup_expired_sessions()
@@ -179,7 +143,6 @@ class NexDeskEnv:
             merged = sess["accumulated"]
 
             base_reward = self._compute_reward(task, step, merged, ticket)
-
             elapsed_minutes = (time.time() - sess["start_time"]) / 60.0
             time_penalty = _compute_time_penalty(elapsed_minutes, sess["sla_deadline_minutes"], sess["stress_level"])
 
@@ -197,16 +160,15 @@ class NexDeskEnv:
 
             reward = base_reward * (1.0 - time_penalty) + confidence_bonus
 
-            # SLA breach
             if elapsed_minutes > sess["sla_deadline_minutes"]:
                 sess["sla_breaches"] += 1
                 sla_penalty = 0.05 * sess["sla_breaches"]
                 reward *= (1.0 - min(sla_penalty, 0.3))
 
-            # ULTRA-STRICT CLAMPING
+            # ULTIMATE CLAMPING
             reward = _strict_clamp(reward)
             steps_remaining = sess["max_steps"] - step
-            max_allowed = _MAX_SAFE - sess["total_reward"] - (steps_remaining * 0.02)
+            max_allowed = _MAX_SAFE - sess["total_reward"] - (steps_remaining * 0.03)
             reward = _strict_clamp(max(_EPS, min(reward, max_allowed)))
 
             sess["total_reward"] += reward
@@ -261,6 +223,7 @@ class NexDeskEnv:
                 },
             }
 
+    # === REST OF THE FILE (unchanged methods) ===
     def state(self, session_id: str) -> Dict[str, Any]:
         with self._lock:
             if session_id not in self._sessions:
@@ -285,16 +248,14 @@ class NexDeskEnv:
 
     def _compute_reward(self, task: str, step: int, action: Dict[str, Any], ticket: Dict[str, Any]) -> float:
         try:
-            if task == "ticket_classify":
-                return grade_classify(action, ticket)
+            if task == "ticket_classify": return grade_classify(action, ticket)
             if task == "ticket_route":
                 return grade_route_step1(action, ticket) if step == 1 else grade_route_step2(action, ticket)
             if task == "ticket_resolve":
                 if step == 1: return grade_resolve_step1(action, ticket)
                 elif step == 2: return grade_resolve_step2(action, ticket)
                 else: return grade_resolve_step3(action, ticket)
-            if task == "crisis_surge":
-                return grade_crisis_ticket(action, ticket, step)
+            if task == "crisis_surge": return grade_crisis_ticket(action, ticket, step)
             return _EPS
         except Exception as e:
             logger.error(f"Reward computation failed: {e}")
