@@ -1,12 +1,4 @@
----
-title: Nexdesk Ticket Triage
-emoji: 💻
-colorFrom: blue
-colorTo: green
-sdk: docker
-pinned: false
-license: mit
----
+
 
 # NexDesk — Agentic RAG-Powered IT Ticket Triage System
 
