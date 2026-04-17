@@ -44,3 +44,4 @@ uv.lock
 .pytest_cache/
 .coverage
 htmlcov/
+final_report.json

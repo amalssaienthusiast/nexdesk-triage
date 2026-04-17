@@ -609,7 +609,7 @@ def grade_resolve_step2(action: Dict[str, Any], ticket: Dict[str, Any]) -> float
         return _EPS
 
 
-def grade_resolve_step3(action: Dict[str, Any], ticket: Dict[str, Any]) -> float:
+def grade_resolve_step3(action: Dict[str, Any], ticket: Dict[str, Any], kb_results: Optional[List[Dict[str, Any]]] = None) -> float:
     try:
         action = _as_dict(action)
         ticket = _as_dict(ticket)
@@ -627,6 +627,16 @@ def grade_resolve_step3(action: Dict[str, Any], ticket: Dict[str, Any]) -> float
 
         sla = action.get("sla_hours")
         score += 0.10 * _sla_score(sla, ticket.get("gt_sla_hours", 8))
+
+        # KB usage bonus: reward grounded answers over hallucination
+        if steps and kb_results:
+            combined_steps = " ".join(str(s) for s in steps).lower()
+            used_kb = any(
+                article.get("title", "").lower() in combined_steps
+                for article in kb_results
+            )
+            if used_kb:
+                score += 0.03
 
         return _strict(score)
     except Exception:

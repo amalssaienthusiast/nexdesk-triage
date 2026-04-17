@@ -22,6 +22,9 @@ from .graders import (
 )
 from .metrics import BusinessMetrics
 from .tickets import TICKETS
+from .flagging import TriageFlagEngine
+from .knowledge_base import MockKnowledgeBase
+from .multi_agent import MultiAgentOrchestrator
 
 logger = logging.getLogger(__name__)
 
@@ -154,6 +157,10 @@ class NexDeskEnv:
         self._lock = threading.RLock()
         self._metrics = BusinessMetrics()
         self._session_timeout_seconds = 3600
+        # Initialize the global components
+        self._kb = MockKnowledgeBase()
+        self._flag_engine = TriageFlagEngine()
+        self._multi_agent_orchestrators: Dict[str, MultiAgentOrchestrator] = {}
         self._start_cleanup_thread()
         logger.info("started nexdesk env")
 
@@ -216,12 +223,34 @@ class NexDeskEnv:
             "tickets_resolved": 0,
             "escalations": 0,
             "sla_breaches": 0,
+            "kb_searches_performed": 0,
+            "knowledge_results": None,
+            "escalation_history": [],
+            "current_agent_role": "L1_Dispatcher",
+            "bounce_count": 0,
+            "active_flags": [],
+            "multi_agent_orchestrator": None,
         }
         with self._lock:
             self._sessions[session_id] = session_data
+            self._multi_agent_orchestrators.pop(session_id, None)
 
         logger.info(f"Reset: task={task}, session_id={session_id}")
         return {"observation": self._build_observation(session_id, _EPS), "session_id": session_id}
+
+    def _handle_kb_search(self, session_id: str, query: str) -> List[Dict[str, Any]]:
+        """Handle KB search action and deduct SLA time"""
+        sess = self._sessions[session_id]
+        results = self._kb.search(query, top_k=3)
+
+        # Deduct 2 minutes from SLA
+        sess["sla_deadline_minutes"] = max(1, sess["sla_deadline_minutes"] - 2)
+
+        # Store in session for next observation
+        sess["last_kb_results"] = results
+        sess["kb_searches_performed"] = sess.get("kb_searches_performed", 0) + 1
+
+        return results
 
     def step(self, session_id: str, action: Dict[str, Any]) -> Dict[str, Any]:
         # step logic. tracks time limits and runs graders.
@@ -243,12 +272,49 @@ class NexDeskEnv:
             ticket = sess["ticket"]
             cfg = TASK_CONFIGS[task]
 
+            action_type = action.get("action_type") if action else None
+
             # Merge action into accumulated state
             if action and isinstance(action, dict):
                 for k, v in action.items():
                     if v is not None:
                         sess["accumulated"][k] = v
             merged = sess["accumulated"]
+
+            # Handle KB search action
+            if action_type == "search_kb":
+                query = action.get("query") or f"{ticket.get('subject', '')} {ticket.get('description', '')[:100]}"
+                kb_results = self._handle_kb_search(session_id, query)
+                base_reward = 0.05
+                # Keep it as an intermediate step for agent, do not advance main step counter
+                sess["step"] -= 1
+                return {
+                    "observation": self._build_observation(session_id, last_reward=0.01),
+                    "reward": 0.01,
+                    "done": False,
+                    "info": {"search_performed": True, "results_found": len(sess.get("last_kb_results", []))}
+                }
+
+            # Multi-Agent Escalation Handling
+            multi_agent_data = None
+            if action_type in ("escalate", "delegate"):
+                if session_id not in self._multi_agent_orchestrators:
+                    self._multi_agent_orchestrators[session_id] = MultiAgentOrchestrator()
+                
+                orchestrator = self._multi_agent_orchestrators[session_id]
+                enriched_action = orchestrator.process_action(merged, ticket)
+                multi_agent_data = enriched_action.get("_multi_agent")
+                # Use the enriched action for grading
+                merged = enriched_action
+                
+                # Keep it as an intermediate step to align with user behavior
+                sess["step"] -= 1
+                return {
+                    "observation": self._build_observation(session_id, last_reward=0.01),
+                    "reward": 0.01,
+                    "done": False,
+                    "info": {"escalation_handled": True, "multi_agent": multi_agent_data}
+                }
 
             # Compute base reward
             try:
@@ -285,8 +351,13 @@ class NexDeskEnv:
                     logger.error(f"Confidence bonus error: {e}")
                     confidence_bonus = _EPS
 
-            # Final reward calculation with penalties and bonuses
-            reward = base_reward * (1.0 - time_penalty) + confidence_bonus
+            # Apply multi-agent reward modifier if active
+            multi_agent_modifier = 1.0
+            if session_id in self._multi_agent_orchestrators:
+                multi_agent_modifier = self._multi_agent_orchestrators[session_id].get_reward_modifier()
+
+            # Final reward calculation with penalties, bonuses, and multi-agent modifier
+            reward = base_reward * (1.0 - time_penalty) * multi_agent_modifier + confidence_bonus
 
             # Track SLA breaches
             sla_penalty = _EPS
@@ -301,9 +372,9 @@ class NexDeskEnv:
             steps_remaining = sess["max_steps"] - step
             max_allowed_reward = 0.99 - sess["total_reward"] - (steps_remaining * _EPS)
 
-            reward = float(round(max(_EPS, min(reward, max_allowed_reward)), 2))
+            reward = float(round(max(_EPS, min(reward, max_allowed_reward)), 4))
 
-            sess["total_reward"] += reward
+            sess["total_reward"] = float(round(sess["total_reward"] + reward, 4))
             sess["rewards"].append(reward)
 
             # Get multi-dimensional score breakdown (advanced feature)
@@ -354,6 +425,13 @@ class NexDeskEnv:
                 except Exception as e:
                     logger.error(f"Metrics recording error: {e}")
 
+            # 3. OPT-IN FEATURE: Advanced Flagging & Alerting System
+            # Run the rule engine over the session state
+            try:
+                self._flag_engine.evaluate(sess)
+            except Exception as e:
+                logger.error(f"Flag engine error: {e}")
+
             return {
                 "observation": self._build_observation(session_id, reward),
                 "reward": round(reward, 4),
@@ -366,6 +444,9 @@ class NexDeskEnv:
                     "time_penalty": max(0.01, min(0.99, round(time_penalty, 4))),
                     "confidence_bonus": max(0.01, min(0.99, round(confidence_bonus, 4))),
                     "sla_penalty": max(0.01, min(0.99, round(sla_penalty, 4))),
+                    "multi_agent_modifier": max(0.01, min(0.99, round(multi_agent_modifier, 4))),
+                    "kb_searches": sess["kb_searches_performed"],
+                    "active_flags": len(sess["active_flags"]),
                 },
             }
 
@@ -467,7 +548,18 @@ class NexDeskEnv:
             "org_context": ORG_CONTEXT,
             "similar_tickets": self._find_similar_tickets(ticket),
             "knowledge_hints": self._build_knowledge_hints(ticket),
+            "current_agent_role": sess.get("current_agent_role", "L1_Dispatcher"),
+            "active_flags": sess.get("active_flags", []),
         }
+
+        if session_id in self._multi_agent_orchestrators:
+            obs["multi_agent"] = self._multi_agent_orchestrators[session_id].get_summary()
+
+        # Inject RAG KB results into observations if they exist
+        if sess.get("last_kb_results"):
+            obs["knowledge_results"] = sess["last_kb_results"]
+            # Clear them so they only appear once per search
+            sess["last_kb_results"] = None
 
         if cfg.get("is_batch"):
             obs["batch_info"] = {

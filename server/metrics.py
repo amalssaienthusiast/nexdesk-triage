@@ -2,7 +2,7 @@
 
 from collections import defaultdict
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import timezone, datetime
 from typing import Any, Dict, List
 
 
@@ -15,7 +15,7 @@ class EpisodeRecord:
     tickets_resolved: int
     sla_breaches: int
     confidence_calibration: float
-    timestamp: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
+    timestamp: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
 
 class BusinessMetrics:

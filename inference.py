@@ -259,7 +259,15 @@ def build_prompt(obs: Dict[str, Any], step: int) -> str:
     else:
         instructions = '{"priority": "medium", "category": "other"}'
 
-    prompt = f"{few_shot}\n\n{ticket_block}\n\n{instructions}"
+    # RAG knowledge base injection
+    rag_kb_injection = ""
+    if "knowledge_results" in obs and obs["knowledge_results"]:
+        rag_kb_injection = "\n\n=== INTERNAL KNOWLEDGE BASE ===\n"
+        for i, res in enumerate(obs["knowledge_results"][:2], 1):
+            rag_kb_injection += f"[{i}] {res['title']}:\n{res['content_snippet']}\n\n"
+        rag_kb_injection += "Use exactly these steps to ground your resolution."
+
+    prompt = f"{few_shot}\n\n{ticket_block}{rag_kb_injection}\n\n{instructions}"
     return prompt
 
 
@@ -397,6 +405,18 @@ def run_task(client: OpenAI, task: str) -> None:
         max_steps = obs["max_steps"]
 
         for step in range(1, max_steps + 1):
+            # 1. OPT-IN FEATURE: Multi-agent Escalation / RAG Knowledge Search
+            if task == "ticket_resolve" and step == 3:
+                # Before resolution, search the knowledge base
+                query = f"{obs.get('subject', '')} {obs.get('category', '')}"
+                search_action = {"action_type": "search_kb", "query": query}
+                try:
+                    search_res = env_step(session_id, search_action)
+                    obs = search_res["observation"]  # This now contains the knowledge_results
+                    log_step(step=step, action=json.dumps(search_action), reward=0.01, done=False, error=None)
+                except Exception as e:
+                    pass
+
             action = get_action(client, obs, step)
             action_str = json.dumps(action, separators=(",", ":"))
 

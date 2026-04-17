@@ -1,0 +1,109 @@
+/* 
+   NexDesk Deep Integration — Tailwind Customizations
+*/
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700;900&family=JetBrains+Mono:wght@400;700&display=swap');
+
+:root {
+  --bg-color: #0b1120;
+}
+
+body {
+  font-family: 'Inter', sans-serif;
+  background-color: var(--bg-color);
+  color: #e2e8f0;
+}
+
+.font-mono {
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.glass-panel {
+  background: rgba(15, 23, 42, 0.6);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.stat-card {
+  @apply glass-panel rounded-xl p-4 border border-slate-700/50 flex flex-col justify-between shadow-lg transition-transform hover:-translate-y-1;
+}
+
+.stat-title {
+  @apply text-xs font-bold text-slate-400 uppercase tracking-wider mb-2;
+}
+
+.stat-value {
+  @apply text-3xl font-black tracking-tight;
+}
+
+/* Pipeline styles */
+.pipeline-stage-box {
+  @apply bg-slate-800/80 border border-slate-700 rounded-lg p-3 text-sm transition-all duration-300;
+}
+
+.pipeline-ticket {
+  @apply flex items-center justify-between bg-slate-900 border border-slate-700 rounded p-2 mb-2 shadow-sm cursor-pointer hover:border-white hover:shadow-[0_0_8px_rgba(255,255,255,0.3)] transition-all;
+}
+
+.pipeline-ticket.critical { border-left: 3px solid #ffffff; }
+.pipeline-ticket.high { border-left: 3px solid #cccccc; }
+.pipeline-ticket.medium { border-left: 3px solid #888888; }
+.pipeline-ticket.low { border-left: 3px solid #444444; }
+
+.pipeline-arrow {
+  @apply flex items-center justify-center text-slate-600;
+}
+
+.arrow-animated {
+  display: inline-block;
+  animation: flowRight 2s infinite linear;
+}
+
+@keyframes flowRight {
+  0% { transform: translateX(-5px); opacity: 0; }
+  50% { transform: translateX(0); opacity: 1; }
+  100% { transform: translateX(5px); opacity: 0; }
+}
+
+/* Heatmap */
+.heatmap-cell {
+  @apply bg-slate-800 border border-slate-700 rounded relative overflow-hidden flex items-center justify-center text-xs font-bold transition-all duration-500;
+  aspect-ratio: 1;
+}
+.heatmap-cell:hover {
+  transform: scale(1.1);
+  z-index: 10;
+  box-shadow: 0 0 10px rgba(0,0,0,0.5);
+}
+.heatmap-tooltip {
+  @apply absolute -top-8 left-1/2 transform -translate-x-1/2 bg-black text-white text-[10px] py-1 px-2 rounded opacity-0 transition-opacity pointer-events-none whitespace-nowrap;
+}
+.heatmap-cell:hover .heatmap-tooltip {
+  @apply opacity-100;
+}
+
+/* Animations */
+.mask-fade-bottom {
+  mask-image: linear-gradient(to bottom, black 70%, transparent 100%);
+  -webkit-mask-image: linear-gradient(to bottom, black 70%, transparent 100%);
+}
+
+.animate-slide-down {
+  transform: translateY(0) !important;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #334155;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #475569;
+}
